@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import { createArena } from './map/arena.js';
 import { Player } from './entities/player.js';
+import { Enemy } from './entities/enemy.js';
 import { Joystick } from './ui/joystick.js';
+import { CombatSystem } from './game/combat.js';
 
-// Telegram Web App API
+// Telegram Web App
 const tg = window.Telegram?.WebApp;
 if (tg) {
     tg.ready();
@@ -29,7 +31,6 @@ document.body.appendChild(renderer.domElement);
 // Свет
 const ambient = new THREE.AmbientLight(0xffffff, 0.75);
 scene.add(ambient);
-
 const sun = new THREE.DirectionalLight(0xfff2cc, 1.1);
 sun.position.set(30, 50, 20);
 sun.castShadow = true;
@@ -49,23 +50,25 @@ scene.add(arena);
 // Игрок
 const player = new Player(scene, 'T');
 
+// Враги (2 бота CT)
+const enemies = [
+    new Enemy(scene, 'CT', new THREE.Vector3(-20, 0, 0)),
+    new Enemy(scene, 'CT', new THREE.Vector3(20, 0, 0))
+];
+
+// Боевая система
+const combat = new CombatSystem(scene);
+
 // Джойстик
 const joystick = new Joystick(
     document.getElementById('joystick'),
     document.getElementById('joystick-knob')
 );
 
-// Кнопки способностей (заглушки)
-document.getElementById('ability-1').addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    console.log('Ability 1: bomb/plant');
-});
-document.getElementById('ability-2').addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    console.log('Ability 2: melee');
-});
+// HUD
+const hud = document.getElementById('hud');
 
-// Камера — сзади-сверху
+// Камера
 const cameraOffset = { x: 0, y: 18, z: 16 };
 function updateCamera() {
     const t = player.mesh.position;
@@ -80,13 +83,69 @@ camera.position.set(0, 18, 56);
 
 // Цикл
 const clock = new THREE.Clock();
+let totalKills = 0;
+
 function animate() {
     requestAnimationFrame(animate);
     const dt = Math.min(clock.getDelta(), 0.05);
 
+    // Игрок
     player.update(dt, joystick.direction);
-    updateCamera();
 
+    // Автоаим игрока — ищем ближайшего врага
+    if (player.alive) {
+        const target = combat.findNearestTarget(
+            player.mesh.position, enemies, player.attackRange
+        );
+        if (target) {
+            player.faceTarget(target.mesh.position);
+            player.attackTimer -= dt;
+            if (player.attackTimer <= 0) {
+                player.attackTimer = player.attackCooldown;
+                combat.shoot(player.mesh.position, target, 'T');
+            }
+        }
+    }
+
+    // Враги
+    for (const enemy of enemies) {
+        if (!enemy.alive) continue;
+        const action = enemy.update(dt, player.mesh.position);
+        if (action && action.type === 'shoot') {
+            const startPos = action.from.clone().sub(new THREE.Vector3(0, 1.2, 0));
+            const bullet = new (combat.constructor === Object ? Object : Object)();
+            // Просто вызываем combat.shoot по направлению
+            const fakeTarget = {
+                mesh: {
+                    position: action.from.clone().add(
+                        action.direction.clone().multiplyScalar(10)
+                    )
+                }
+            };
+            combat.shoot(startPos, fakeTarget, 'CT');
+        }
+    }
+
+    // Пули
+    combat.update(dt, enemies, player);
+
+    // Респавн мёртвых врагов (для теста)
+    for (let i = 0; i < enemies.length; i++) {
+        if (!enemies[i].alive) {
+            totalKills++;
+            const spawnPos = new THREE.Vector3(
+                (Math.random() - 0.5) * 80,
+                0,
+                (Math.random() - 0.5) * 80
+            );
+            enemies[i] = new Enemy(scene, 'CT', spawnPos);
+        }
+    }
+
+    // HUD
+    hud.textContent = `GOta | HP: ${Math.round(player.hp)} | Kills: ${totalKills}`;
+
+    updateCamera();
     renderer.render(scene, camera);
 }
 animate();
