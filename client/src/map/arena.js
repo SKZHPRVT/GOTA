@@ -1,15 +1,16 @@
 import * as THREE from 'three';
 
 const COLORS = {
-    sand:    0xC2B280,
-    wall:    0x8B7355,
-    wallDark:0x6B5335,
-    crate:   0xA0522D,
-    plantA:  0xCC3333,
-    plantB:  0x3366CC,
-    plantC:  0x33CC66,
-    towerT:  0x8B0000,
-    towerCT: 0x1E3A8A
+    sand:     0xC2B280,
+    sandDark: 0xA89870,
+    wall:     0x8B7355,
+    wallDark: 0x6B5335,
+    crate:    0xA0522D,
+    plantA:   0xCC3333,
+    plantB:   0x3366CC,
+    plantC:   0x33CC66,
+    towerT:   0x8B0000,
+    towerCT:  0x1E3A8A
 };
 
 function box(w, h, d, color, x, y, z, parent, opts = {}) {
@@ -28,6 +29,7 @@ export function createArena() {
     const arena = new THREE.Group();
     const H = 4;
 
+    // Пол
     const floorGeo = new THREE.PlaneGeometry(120, 120);
     const floorMat = new THREE.MeshLambertMaterial({ color: COLORS.sand });
     const floor = new THREE.Mesh(floorGeo, floorMat);
@@ -35,31 +37,53 @@ export function createArena() {
     floor.receiveShadow = true;
     arena.add(floor);
 
+    // Паттерн на полу — плитка
+    for (let i = -5; i <= 5; i++) {
+        for (let j = -5; j <= 5; j++) {
+            if ((i + j) % 2 === 0) continue;
+            const tile = new THREE.Mesh(
+                new THREE.PlaneGeometry(8, 8),
+                new THREE.MeshLambertMaterial({ color: COLORS.sandDark })
+            );
+            tile.rotation.x = -Math.PI / 2;
+            tile.position.set(i * 10, 0.01, j * 10);
+            arena.add(tile);
+        }
+    }
+
+    // Границы
     box(100, H, 2, COLORS.wall, 0, H/2, -50, arena);
     box(100, H, 2, COLORS.wall, 0, H/2,  50, arena);
     box(2, H, 100, COLORS.wall, -50, H/2, 0, arena);
     box(2, H, 100, COLORS.wall,  50, H/2, 0, arena);
 
+    // Mid
     box(2, H, 25, COLORS.wallDark, -5, H/2, 0, arena);
     box(2, H, 25, COLORS.wallDark,  5, H/2, 0, arena);
 
+    // Long A
     box(2, H, 30, COLORS.wallDark, -30, H/2, -10, arena);
     box(20, H, 2, COLORS.wallDark, -20, H/2, -25, arena);
 
+    // B Tunnels
     box(2, H, 30, COLORS.wallDark, 30, H/2, 10, arena);
     box(20, H, 2, COLORS.wallDark, 20, H/2, 25, arena);
 
+    // Short A
     box(2, H, 20, COLORS.wallDark, 15, H/2, -15, arena);
 
+    // Ящики
     const cratePositions = [
         [-10, -10], [-8, -10], [-10, -8],
         [10, 10], [12, 10], [10, 12],
-        [0, 20], [-15, 5], [15, -5]
+        [0, 20], [-15, 5], [15, -5],
+        [-20, 20], [20, -20]
     ];
     cratePositions.forEach(([x, z]) => {
         box(2, 2, 2, COLORS.crate, x, 1, z, arena);
     });
 
+    // Три плэнта
     box(5, 0.3, 5, COLORS.plantA, -35, 0.15, -35, arena, {
         userData: { type: 'plant', id: 'A' }
     });
@@ -70,6 +94,7 @@ export function createArena() {
         userData: { type: 'plant', id: 'C' }
     });
 
+    // Башни
     box(4, 8, 4, COLORS.towerT, 0, 4, 45, arena, {
         userData: { type: 'tower', team: 'T', hp: 1000, maxHp: 1000 }
     });

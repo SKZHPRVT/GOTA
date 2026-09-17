@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-const SPEED = 10;
+const SPEED = 12;
 
 export class Player {
     constructor(scene, team = 'T') {
@@ -11,6 +11,7 @@ export class Player {
 
         this.mesh = new THREE.Group();
 
+        // Тело
         const bodyGeo = new THREE.BoxGeometry(0.9, 0.9, 0.7);
         const bodyMat = new THREE.MeshLambertMaterial({
             color: team === 'T' ? 0xDDAA33 : 0x3366CC
@@ -20,6 +21,7 @@ export class Player {
         this.body.castShadow = true;
         this.mesh.add(this.body);
 
+        // Голова — большая, Minigore-style
         const headGeo = new THREE.SphereGeometry(0.55, 16, 16);
         const headMat = new THREE.MeshLambertMaterial({ color: 0xFFDDA0 });
         this.head = new THREE.Mesh(headGeo, headMat);
@@ -27,33 +29,46 @@ export class Player {
         this.head.castShadow = true;
         this.mesh.add(this.head);
 
+        // Нос — направление
         const noseGeo = new THREE.BoxGeometry(0.15, 0.15, 0.35);
         const noseMat = new THREE.MeshLambertMaterial({ color: 0xFF6600 });
         this.nose = new THREE.Mesh(noseGeo, noseMat);
         this.nose.position.set(0, 1.25, -0.55);
         this.mesh.add(this.nose);
 
+        // Глаза
+        const eyeGeo = new THREE.SphereGeometry(0.08, 8, 8);
+        const eyeMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+        const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
+        eyeL.position.set(-0.18, 1.35, -0.5);
+        this.mesh.add(eyeL);
+        const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
+        eyeR.position.set(0.18, 1.35, -0.5);
+        this.mesh.add(eyeR);
+
+        // Ноги
         const legGeo = new THREE.BoxGeometry(0.25, 0.4, 0.25);
         const legMat = new THREE.MeshLambertMaterial({ color: 0x333333 });
         this.legL = new THREE.Mesh(legGeo, legMat);
         this.legL.position.set(-0.25, 0.2, 0);
+        this.legL.castShadow = true;
         this.mesh.add(this.legL);
         this.legR = new THREE.Mesh(legGeo, legMat);
         this.legR.position.set(0.25, 0.2, 0);
+        this.legR.castShadow = true;
         this.mesh.add(this.legR);
 
         this.mesh.position.set(0, 0, 40);
         scene.add(this.mesh);
 
         this.scene = scene;
-        this.direction = new THREE.Vector3(0, 0, -1);
         this.animTime = 0;
     }
 
     update(dt, input) {
         if (!input) return;
 
-        const move = new THREE.Vector3(input.x, 0, -input.y);
+        const move = new THREE.Vector3(input.x, 0, input.y);
         if (move.length() > 0.15) {
             move.normalize().multiplyScalar(this.speed * dt);
             this.mesh.position.add(move);
@@ -61,7 +76,7 @@ export class Player {
             this.mesh.position.z = THREE.MathUtils.clamp(this.mesh.position.z, -48, 48);
 
             const angle = Math.atan2(move.x, move.z);
-            this.mesh.rotation.y = angle;
+            this.mesh.rotation.y = angle + Math.PI;
 
             this.animTime += dt * 15;
             const swing = Math.sin(this.animTime) * 0.15;
