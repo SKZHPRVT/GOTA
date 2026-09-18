@@ -7,7 +7,7 @@ import { CombatSystem } from './game/combat.js';
 import { CollisionSystem } from './game/collision.js';
 import { RoundManager } from './game/round.js';
 
-// === Telegram WebApp ===
+// === Telegram ===
 const tg = window.Telegram?.WebApp;
 if (tg) {
     try {
@@ -17,76 +17,61 @@ if (tg) {
         if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
         if (tg.setHeaderColor) tg.setHeaderColor('#000000');
         if (tg.setBackgroundColor) tg.setBackgroundColor('#C2B280');
-        if (tg.lockOrientation) {
-            try { tg.lockOrientation('landscape'); } catch (e) {}
-        }
     } catch (e) {}
-
-    const tryLock = () => {
-        if (tg.lockOrientation) {
-            try { tg.lockOrientation('landscape'); } catch (e) {}
-        }
-    };
-    if (tg.onEvent) {
-        tg.onEvent('fullscreenChanged', () => {
-            if (tg.isFullscreen) tryLock();
-        });
-    }
-    document.addEventListener('touchstart', function once() {
-        tryLock();
-        document.removeEventListener('touchstart', once);
-    }, { once: true });
 }
 
-// === Game root ===
-const gameRoot = document.getElementById('game-root');
-
-// Функция: получить размеры с учётом поворота
-function getViewportSize() {
-    const isPortrait = window.innerHeight > window.innerWidth;
-    if (isPortrait) {
-        // При повороте через CSS — размеры меняются местами
-        return {
-            w: window.innerHeight,
-            h: window.innerWidth
-        };
+// === Rotate-hint: показываем 2 секунды при portrait ===
+const rotateHintEl = document.getElementById('rotate-hint');
+let rotateTimer = null;
+function checkOrientation() {
+    if (window.innerHeight > window.innerWidth) {
+        rotateHintEl.style.display = 'flex';
+        if (rotateTimer) clearTimeout(rotateTimer);
+        rotateTimer = setTimeout(() => {
+            rotateHintEl.style.display = 'none';
+        }, 2000);
+    } else {
+        rotateHintEl.style.display = 'none';
+        if (rotateTimer) clearTimeout(rotateTimer);
     }
-    return {
-        w: window.innerWidth,
-        h: window.innerHeight
-    };
 }
+setTimeout(checkOrientation, 500);
+window.addEventListener('resize', checkOrientation);
+window.addEventListener('orientationchange', checkOrientation);
 
 // === Debug (с ?debug=1) ===
 const showDebug = new URLSearchParams(window.location.search).get('debug') === '1';
-let debugEl = null;
-if (showDebug) {
-    debugEl = document.createElement('div');
-    debugEl.style.cssText = `
-        position: fixed;
-        top: 80px;
-        right: 10px;
-        background: rgba(0,0,0,0.75);
-        color: #0f0;
-        font-size: 11px;
-        padding: 6px 10px;
-        border-radius: 6px;
-        z-index: 60;
-        font-family: monospace;
-        pointer-events: none;
-        white-space: pre;
-        line-height: 1.4;
-    `;
-    gameRoot.appendChild(debugEl);
 
+// === Сцена ===
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xE8D8A8);
+scene.fog = new THREE.Fog(0xE8D8A8, 100, 300);
+
+const camera = new THREE.PerspectiveCamera(
+    55, window.innerWidth / window.innerHeight, 0.1, 800
+);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+if (showDebug) {
+    const debugEl = document.createElement('div');
+    debugEl.style.cssText = `
+        position: fixed; top: 80px; right: 10px;
+        background: rgba(0,0,0,0.75); color: #0f0;
+        font-size: 11px; padding: 6px 10px;
+        border-radius: 6px; z-index: 60;
+        font-family: monospace; pointer-events: none;
+        white-space: pre; line-height: 1.4;
+    `;
+    document.body.appendChild(debugEl);
     setInterval(() => {
-        const vp = getViewportSize();
         if (!tg) {
-            debugEl.textContent =
-                `no Telegram\n` +
-                `window: ${window.innerWidth}×${window.innerHeight}\n` +
-                `viewport: ${vp.w}×${vp.h}\n` +
-                `orient: ${screen.orientation?.type || '?'}`;
+            debugEl.textContent = `no Telegram\nwin: ${window.innerWidth}×${window.innerHeight}\norient: ${screen.orientation?.type || '?'}`;
             return;
         }
         debugEl.textContent =
@@ -95,26 +80,10 @@ if (showDebug) {
             `fullscr: ${tg.isFullscreen}\n` +
             `orientLock: ${tg.isOrientationLocked}\n` +
             `vh: ${Math.round(tg.viewportHeight)}/${Math.round(tg.viewportStableHeight)}\n` +
-            `window: ${window.innerWidth}×${window.innerHeight}\n` +
-            `viewport: ${vp.w}×${vp.h}\n` +
+            `win: ${window.innerWidth}×${window.innerHeight}\n` +
             `orient: ${screen.orientation?.type || '?'}`;
     }, 1000);
 }
-
-// === Сцена ===
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xE8D8A8);
-scene.fog = new THREE.Fog(0xE8D8A8, 100, 300);
-
-const vp0 = getViewportSize();
-const camera = new THREE.PerspectiveCamera(55, vp0.w / vp0.h, 0.1, 800);
-
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(vp0.w, vp0.h);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-gameRoot.appendChild(renderer.domElement);
 
 scene.add(new THREE.AmbientLight(0xFFF0D0, 0.85));
 const sun = new THREE.DirectionalLight(0xFFE8B0, 1.2);
@@ -371,23 +340,16 @@ function animate() {
     renderer.render(scene, camera);
 }
 
-// === Resize с учётом поворота ===
-function onResize() {
-    const vp = getViewportSize();
-    camera.aspect = vp.w / vp.h;
-    camera.updateProjectionMatrix();
-    renderer.setSize(vp.w, vp.h);
-}
-
-window.addEventListener('resize', onResize);
-window.addEventListener('orientationchange', () => {
-    setTimeout(onResize, 300);
-});
-
 window.addEventListener('keydown', (e) => {
     if (e.key === 'c' || e.key === 'C' || e.key === 'с' || e.key === 'С') {
         USE_COLLISION = !USE_COLLISION;
     }
+});
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
 init();

@@ -22,23 +22,25 @@
                 if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
                 if (tg.setHeaderColor) tg.setHeaderColor('#000000');
                 if (tg.setBackgroundColor) tg.setBackgroundColor('#C2B280');
-                if (tg.lockOrientation) {
-                    try { tg.lockOrientation('landscape'); } catch (e) {}
-                }
             } catch (e) { console.error('[tg-head]', e); }
 
-            // Повторяем попытку lock после fullscreen и по тапу
-            if (tg.onEvent) {
-                tg.onEvent('fullscreenChanged', function() {
-                    if (tg.isFullscreen && tg.lockOrientation) {
-                        try { tg.lockOrientation('landscape'); } catch (e) {}
-                    }
-                });
-            }
-            document.addEventListener('touchstart', function once() {
+            // Пытаемся лочить landscape, но не критично
+            var tryLock = function() {
                 if (tg.lockOrientation) {
                     try { tg.lockOrientation('landscape'); } catch (e) {}
                 }
+            };
+
+            if (tg.onEvent) {
+                tg.onEvent('fullscreenChanged', function() {
+                    if (tg.isFullscreen) tryLock();
+                });
+            }
+            setTimeout(function() {
+                if (tg.isFullscreen) tryLock();
+            }, 500);
+            document.addEventListener('touchstart', function once() {
+                tryLock();
                 document.removeEventListener('touchstart', once);
             }, { once: true });
         })();
@@ -68,36 +70,11 @@
             font-family: 'Courier New', monospace;
             touch-action: none;
             color: #fff;
-        }
-
-        /* === КОНТЕЙНЕР ДЛЯ CSS-ПОВОРОТА === */
-        /* Если ориентация портретная — контейнер поворачивается на 90° */
-        #game-root {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
+            inset: 0;
         }
+        canvas { display: block; width: 100%; height: 100%; }
 
-        @media (orientation: portrait) {
-            #game-root {
-                /* Поворачиваем: ширина становится высотой */
-                width: 100vh;
-                height: 100vw;
-                transform: rotate(90deg);
-                transform-origin: top left;
-                /* Сдвигаем на нужное место */
-                top: 0;
-                left: 100vw;
-                margin-left: -100vw;
-            }
-        }
-
-        canvas { display: block; width: 100% !important; height: 100% !important; }
-
-        /* HUD */
         #top-hud {
             position: fixed;
             top: calc(10px + var(--content-top));
@@ -202,29 +179,44 @@
             text-align: center;
             pointer-events: none;
         }
+        #rotate-hint {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.85);
+            color: #fff;
+            display: none;
+            justify-content: center; align-items: center;
+            flex-direction: column;
+            font-size: 22px; z-index: 100;
+            text-align: center; padding: 20px;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
-    <div id="game-root">
-        <div id="top-hud">
-            <span id="score-t">T 0</span>
-            <span id="round-timer">60</span>
-            <span id="score-ct">CT 0</span>
-        </div>
-        <div id="round-info">Раунд 1 / 5</div>
-        <div id="hp-hud">HP: 100</div>
-
-        <div id="joystick">
-            <div id="joystick-knob"></div>
-        </div>
-
-        <div id="abilities">
-            <div class="ability" id="ability-1">💣</div>
-            <div class="ability" id="ability-2">🔨</div>
-        </div>
-
-        <div id="banner"></div>
+    <div id="rotate-hint">
+        <div style="font-size:64px;margin-bottom:20px;">📱</div>
+        <div>Поверни телефон горизонтально</div>
     </div>
+
+    <div id="top-hud">
+        <span id="score-t">T 0</span>
+        <span id="round-timer">60</span>
+        <span id="score-ct">CT 0</span>
+    </div>
+    <div id="round-info">Раунд 1 / 5</div>
+    <div id="hp-hud">HP: 100</div>
+
+    <div id="joystick">
+        <div id="joystick-knob"></div>
+    </div>
+
+    <div id="abilities">
+        <div class="ability" id="ability-1">💣</div>
+        <div class="ability" id="ability-2">🔨</div>
+    </div>
+
+    <div id="banner"></div>
 
     <script type="module" src="/src/main.js"></script>
 </body>
