@@ -19,15 +19,15 @@ const SOUNDS = {
 };
 
 const DEFAULT_VOLUMES = {
-    shoot:          0.14,   // было 0.18 → -22%
-    footstep:       0.08,   // было 0.10
+    shoot:          0.11,   // было 0.14 → −21%
+    footstep:       0.08,
     freezeEnd:      0.70,
     roundStart:     0.65,
-    roundMusic:     0.15,   // было 0.20 → -25%
+    roundMusic:     0.13,   // было 0.15 → −13%
     winT:           0.75,
     winCT:          0.75,
-    bombPlaced:     1.00,   // было 0.85 → громче
-    bombTick:       0.90,   // было 0.4 → сильно громче
+    bombPlaced:     1.00,
+    bombTick:       1.00,   // было 0.90 → громче
     bombDefused:    0.75,
     c4Disarm:       0.70,
     bombExplode:    0.85,
@@ -255,7 +255,7 @@ export class AudioManager {
     bombPlaced() { this.play('bombPlaced'); }
 
     startBombTick() {
-        this.play('bombTick', { loop: false, force: true });
+        this.play('bombTick', { loop: true, force: true });
     }
     stopBombTick() { this.stop('bombTick'); }
 
