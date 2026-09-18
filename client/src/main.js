@@ -243,10 +243,10 @@ function createTeams() {
     ctBots = [];
 
     const tRoles = [
-        { role: 'mid', offset: { x: -6, z: 5 } },
-        { role: 'A',   offset: { x: 6,  z: 5 } },
-        { role: 'A',   offset: { x: 10, z: 0 } },
-        { role: 'B',   offset: { x: -10, z: 0 } }
+        { role: 'mid', offset: { x: -10, z: 0 } },
+        { role: 'A',   offset: { x: -4,  z: 0 } },
+        { role: 'A',   offset: { x: 4,   z: 0 } },
+        { role: 'B',   offset: { x: 10,  z: 0 } }
     ];
     for (const r of tRoles) {
         tBots.push(new Enemy(scene, 'T', {
