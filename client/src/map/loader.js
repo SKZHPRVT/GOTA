@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 
-// ============ Toon-материал ============
 const toonGradient = (() => {
     const colors = new Uint8Array([80, 160, 220, 255]);
     const tex = new THREE.DataTexture(colors, colors.length, 1, THREE.RedFormat);
@@ -25,30 +24,27 @@ function addOutline(mesh, thickness = 0.05) {
     mesh.add(outline);
 }
 
-// ============ Прямоугольник пола ============
 function makeFloor(zone, parent) {
     const geo = new THREE.PlaneGeometry(zone.w, zone.d);
     const mat = toonMat(new THREE.Color(zone.color).getHex());
     const mesh = new THREE.Mesh(geo, mat);
     mesh.rotation.x = -Math.PI / 2;
-    mesh.position.set(zone.x, zone.y || 0.01, zone.z);
+    mesh.position.set(zone.x, 0.01, zone.z);
     mesh.receiveShadow = true;
     parent.add(mesh);
     return mesh;
 }
 
-// ============ Стена ============
 function makeWall(w, parent) {
-    const geo = new THREE.BoxGeometry(w.w, w.h, w.d);
-    const mat = toonMat(0x2a2a2a);
+    const geo = new THREE.BoxGeometry(w.w, w.h || 4, w.d);
+    const mat = toonMat(0x6B5638);
     const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(w.x, w.h / 2, w.z);
+    mesh.position.set(w.x, (w.h || 4) / 2, w.z);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     addOutline(mesh, 0.03);
     parent.add(mesh);
 
-    // Сохраняем AABB для коллизий
     mesh.userData.collider = {
         minX: w.x - w.w / 2,
         maxX: w.x + w.w / 2,
@@ -58,7 +54,6 @@ function makeWall(w, parent) {
     return mesh;
 }
 
-// ============ Ящик ============
 function makeCrate(c, parent) {
     const geo = new THREE.BoxGeometry(c.size, c.size, c.size);
     const mat = toonMat(0xB8B8B8);
@@ -78,7 +73,6 @@ function makeCrate(c, parent) {
     return mesh;
 }
 
-// ============ Контейнер ============
 function makeContainer(c, parent) {
     const geo = new THREE.BoxGeometry(c.w, c.h, c.d);
     const mat = toonMat(new THREE.Color(c.color).getHex());
@@ -98,7 +92,6 @@ function makeContainer(c, parent) {
     return mesh;
 }
 
-// ============ Триггер-зона (plent) ============
 function makePlant(p, parent) {
     const geo = new THREE.PlaneGeometry(p.w, p.d);
     const mat = new THREE.MeshBasicMaterial({
@@ -114,7 +107,6 @@ function makePlant(p, parent) {
     return mesh;
 }
 
-// ============ Башня ============
 function makeTower(t, parent) {
     const s = t.size;
     const geo = new THREE.BoxGeometry(s, s * 2.5, s);
@@ -140,40 +132,31 @@ function makeTower(t, parent) {
     return mesh;
 }
 
-// ============ Загрузка всей карты ============
 export async function loadMap(url, parent) {
     const res = await fetch(url);
     const data = await res.json();
 
+    console.log('[loader] floors:', data.floors?.length || 0);
+    console.log('[loader] walls:', data.walls?.length || 0);
+    console.log('[loader] spawns:', data.spawns);
+
     const colliders = [];
     const towers = [];
 
-    // Полы
-    for (const f of data.floors) {
-        makeFloor(f, parent);
-    }
+    for (const f of data.floors) makeFloor(f, parent);
 
-    // Верхний уровень
-    if (data.upper) {
-        for (const f of data.upper) {
-            makeFloor(f, parent);
-            // Бортик вокруг верхнего этажа (упрощённо)
-        }
-    }
-
-    // Стены
     for (const w of data.walls) {
         const wall = makeWall(w, parent);
         colliders.push(wall.userData.collider);
     }
 
-    // Ящики
-    for (const c of data.crates) {
-        const crate = makeCrate(c, parent);
-        colliders.push(crate.userData.collider);
+    if (data.crates) {
+        for (const c of data.crates) {
+            const crate = makeCrate(c, parent);
+            colliders.push(crate.userData.collider);
+        }
     }
 
-    // Контейнеры
     if (data.containers) {
         for (const c of data.containers) {
             const cont = makeContainer(c, parent);
@@ -181,18 +164,16 @@ export async function loadMap(url, parent) {
         }
     }
 
-    // Плэнты
     if (data.plants) {
-        for (const p of data.plants) {
-            makePlant(p, parent);
-        }
+        for (const p of data.plants) makePlant(p, parent);
     }
 
-    // Башни
-    for (const t of data.towers) {
-        const tower = makeTower(t, parent);
-        colliders.push(tower.userData.collider);
-        towers.push(tower);
+    if (data.towers) {
+        for (const t of data.towers) {
+            const tower = makeTower(t, parent);
+            colliders.push(tower.userData.collider);
+            towers.push(tower);
+        }
     }
 
     return { data, colliders, towers };

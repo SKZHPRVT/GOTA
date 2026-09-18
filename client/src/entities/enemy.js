@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 
-const SPEED = 5;
-const ATTACK_RANGE = 16;
+const SPEED = 6;
+const ATTACK_RANGE = 18;
 const ATTACK_COOLDOWN = 1.2;
+const SCALE = 1.5; // +50%
 
 const toonGradient = (() => {
     const colors = new Uint8Array([80, 160, 220, 255]);
@@ -28,7 +29,7 @@ function addOutline(mesh, thickness = 0.08) {
 }
 
 export class Enemy {
-    constructor(scene, team = 'CT', position = { x: 10, z: 24 }) {
+    constructor(scene, team = 'CT', position = { x: 0, z: -42 }) {
         this.scene = scene;
         this.team = team;
         this.hp = 100;
@@ -38,6 +39,7 @@ export class Enemy {
         this.attackTimer = 0;
 
         this.mesh = new THREE.Group();
+        this.mesh.scale.setScalar(SCALE);
 
         const bodyGeo = new THREE.BoxGeometry(0.9, 0.9, 0.7);
         const bodyMat = toonMat(0xCC3333);
@@ -103,7 +105,7 @@ export class Enemy {
         this.animTime = 0;
     }
 
-    update(dt, playerPos, collision = null) {
+    update(dt, playerPos, collision = null, hasLineOfSight = true) {
         if (!this.alive) return null;
 
         const hpPercent = Math.max(0, this.hp / this.maxHp);
@@ -114,7 +116,9 @@ export class Enemy {
         const distToPlayer = toPlayer.length();
 
         this.attackTimer -= dt;
-        if (distToPlayer < ATTACK_RANGE && this.attackTimer <= 0) {
+
+        // Атака — только если есть прямая видимость
+        if (distToPlayer < ATTACK_RANGE && this.attackTimer <= 0 && hasLineOfSight) {
             this.attackTimer = ATTACK_COOLDOWN;
             return {
                 type: 'shoot',

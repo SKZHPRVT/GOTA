@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 
-const SPEED = 10;
-const ATTACK_RANGE = 16;
+const SPEED = 15;
+const ATTACK_RANGE = 20;
 const ATTACK_COOLDOWN = 0.4;
+const SCALE = 1.5; // +50%
 
 const toonGradient = (() => {
     const colors = new Uint8Array([80, 160, 220, 255]);
@@ -28,7 +29,7 @@ function addOutline(mesh, thickness = 0.08) {
 }
 
 export class Player {
-    constructor(scene, team = 'T', spawn = { x: 5, z: -24 }) {
+    constructor(scene, team = 'T', spawn = { x: 0, z: 0 }) {
         this.scene = scene;
         this.team = team;
         this.speed = SPEED;
@@ -40,6 +41,7 @@ export class Player {
         this.attackCooldown = ATTACK_COOLDOWN;
 
         this.mesh = new THREE.Group();
+        this.mesh.scale.setScalar(SCALE);
 
         const bodyGeo = new THREE.BoxGeometry(0.9, 0.9, 0.7);
         const bodyMat = toonMat(team === 'T' ? 0xDDAA33 : 0x3366CC);

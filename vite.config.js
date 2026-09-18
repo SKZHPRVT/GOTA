@@ -1,8 +1,9 @@
 import { defineConfig } from 'vite';
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
     root: 'client',
-    base: '/GOTA/',
+    // В dev — без base, в build — с base для GitHub Pages
+    base: command === 'build' ? '/GOTA/' : '/',
     server: {
         host: '0.0.0.0',
         port: 5173
@@ -11,4 +12,4 @@ export default defineConfig({
         outDir: '../dist',
         emptyOutDir: true
     }
-});
+}));

@@ -1,16 +1,13 @@
-// Простая AABB-коллизия: игрок — точка с радиусом r
 export class CollisionSystem {
     constructor(colliders) {
         this.colliders = colliders;
-        this.playerRadius = 0.5;
+        this.playerRadius = 0.4;
     }
 
-    // Проверка: может ли игрок стоять в позиции (x, z)
     canMoveTo(x, z) {
         const r = this.playerRadius;
         for (const c of this.colliders) {
             if (!c) continue;
-            // AABB: проверяем, пересекается ли круг (x,z,r) с прямоугольником
             const closestX = Math.max(c.minX, Math.min(x, c.maxX));
             const closestZ = Math.max(c.minZ, Math.min(z, c.maxZ));
             const dx = x - closestX;
@@ -22,7 +19,6 @@ export class CollisionSystem {
         return true;
     }
 
-    // Скольжение: пробуем по X, потом по Z
     resolveMove(currentX, currentZ, deltaX, deltaZ) {
         let newX = currentX + deltaX;
         let newZ = currentZ + deltaZ;
@@ -39,5 +35,29 @@ export class CollisionSystem {
         }
 
         return { x: newX, z: newZ };
+    }
+
+    // Проверка: прямая видимость между двумя точками (не пересекает ли стены)
+    hasLineOfSight(from, to) {
+        const dx = to.x - from.x;
+        const dz = to.z - from.z;
+        const dist = Math.hypot(dx, dz);
+        if (dist < 0.001) return true;
+
+        const steps = Math.ceil(dist / 0.5); // шаг 0.5 юнита
+        const stepX = dx / steps;
+        const stepZ = dz / steps;
+
+        let x = from.x;
+        let z = from.z;
+
+        for (let i = 1; i < steps; i++) {
+            x += stepX;
+            z += stepZ;
+            if (!this.canMoveTo(x, z)) {
+                return false;
+            }
+        }
+        return true;
     }
 }
