@@ -26,32 +26,30 @@
                 if (tg.setBackgroundColor) tg.setBackgroundColor('#C2B280');
             } catch (e) { console.error('[tg init]', e); }
 
-            // Разблокируем ориентацию
+            // Разблокируем ориентацию — чтобы можно было лочить заново
             try {
-                if (tg.unlockOrientation) {
-                    tg.unlockOrientation();
-                    console.log('[tg] orientation unlocked');
-                }
-            } catch (e) { console.warn('[tg] unlock failed', e); }
+                if (tg.unlockOrientation) tg.unlockOrientation();
+            } catch (e) {}
 
-            // Один раз пробуем лочить в landscape
-            setTimeout(function() {
+            // Экспортируем функцию для main.js
+            window.__tgLockLandscape = function() {
                 try {
                     if (tg.lockOrientation) {
                         tg.lockOrientation('landscape');
-                        console.log('[tg] tried lock landscape. isLocked:', tg.isOrientationLocked);
+                        console.log('[tg] locked landscape. isLocked:', tg.isOrientationLocked);
+                        return true;
                     }
-                } catch (e) {}
-            }, 500);
+                } catch (e) {
+                    console.warn('[tg] lock error', e);
+                }
+                return false;
+            };
 
-            if (tg.onEvent) {
-                tg.onEvent('fullscreenChanged', function() {
-                    console.log('[tg] fullscreen:', tg.isFullscreen);
-                });
-                tg.onEvent('viewportChanged', function(e) {
-                    console.log('[tg] viewport:', tg.viewportHeight, 'stable:', tg.viewportStableHeight, 'stable?', e.isStateStable);
-                });
-            }
+            window.__tgUnlock = function() {
+                try {
+                    if (tg.unlockOrientation) tg.unlockOrientation();
+                } catch (e) {}
+            };
         })();
     </script>
 
@@ -184,25 +182,53 @@
             text-align: center;
             pointer-events: none;
         }
-        #rotate-hint {
+
+        /* === ПОЛНОЭКРАННЫЙ ОВЕРЛЕЙ "ПОВЕРНИ ТЕЛЕФОН" === */
+        #rotate-overlay {
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.85);
+            background: #0a0a0a;
             color: #fff;
             display: none;
-            justify-content: center; align-items: center;
+            justify-content: center;
+            align-items: center;
             flex-direction: column;
-            font-size: 22px; z-index: 100;
-            text-align: center; padding: 20px;
+            z-index: 1000;
+            text-align: center;
+            padding: 20px;
             pointer-events: none;
-            transition: opacity 0.3s;
+        }
+        #rotate-overlay.show {
+            display: flex;
+        }
+        #rotate-overlay .icon {
+            font-size: 96px;
+            margin-bottom: 32px;
+            animation: rotate-icon 2s ease-in-out infinite;
+        }
+        @keyframes rotate-icon {
+            0%, 100% { transform: rotate(0deg); }
+            50% { transform: rotate(90deg); }
+        }
+        #rotate-overlay .title {
+            font-size: 26px;
+            font-weight: bold;
+            margin-bottom: 12px;
+        }
+        #rotate-overlay .subtitle {
+            font-size: 14px;
+            opacity: 0.6;
+            max-width: 320px;
+            line-height: 1.5;
         }
     </style>
 </head>
 <body>
-    <div id="rotate-hint">
-        <div style="font-size:64px;margin-bottom:20px;">📱</div>
-        <div>Поверни телефон горизонтально</div>
+    <!-- Оверлей: показывается при портретной ориентации -->
+    <div id="rotate-overlay">
+        <div class="icon">📱</div>
+        <div class="title">Поверни телефон горизонтально</div>
+        <div class="subtitle">Игра поддерживает только горизонтальную ориентацию</div>
     </div>
 
     <div id="top-hud">
