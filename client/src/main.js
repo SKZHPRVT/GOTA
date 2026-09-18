@@ -7,56 +7,21 @@ import { CombatSystem } from './game/combat.js';
 import { CollisionSystem } from './game/collision.js';
 import { RoundManager } from './game/round.js';
 
-// === Telegram ===
+// === Telegram базовое ===
 const tg = window.Telegram?.WebApp;
-
-// === Пауза (пока игрок вертикально) ===
-let isPortrait = false;
-
-// === Оверлей + лок ориентации ===
-const rotateOverlay = document.getElementById('rotate-overlay');
-
-function applyOrientation() {
-    const portrait = window.innerHeight > window.innerWidth;
-    isPortrait = portrait;
-
-    if (portrait) {
-        // Показываем оверлей, разлочиваем, чтобы можно было повернуть
-        rotateOverlay.classList.add('show');
-        if (window.__tgUnlock) window.__tgUnlock();
-    } else {
-        // Landscape — прячем оверлей, лочим landscape
-        rotateOverlay.classList.remove('show');
-        if (window.__tgLockLandscape) window.__tgLockLandscape();
-    }
-
-    console.log('[orient] portrait:', portrait, '| win:', window.innerWidth, 'x', window.innerHeight);
+if (tg) {
+    try {
+        tg.ready();
+        tg.expand();
+        if (tg.requestFullscreen) tg.requestFullscreen();
+        if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
+        if (tg.setHeaderColor) tg.setHeaderColor('#000000');
+        if (tg.setBackgroundColor) tg.setBackgroundColor('#C2B280');
+    } catch (e) {}
 }
 
-// Проверяем сразу и при изменении
-applyOrientation();
-
-window.addEventListener('resize', () => {
-    applyOrientation();
-    // Пересчёт камеры
-    if (camera) {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-    }
-});
-
-window.addEventListener('orientationchange', () => {
-    setTimeout(applyOrientation, 100);
-    setTimeout(applyOrientation, 300);
-    setTimeout(applyOrientation, 600);
-});
-
-if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', () => {
-        setTimeout(applyOrientation, 50);
-    });
-}
+// === Debug (с ?debug=1) ===
+const showDebug = new URLSearchParams(window.location.search).get('debug') === '1';
 
 // === Сцена ===
 const scene = new THREE.Scene();
@@ -74,8 +39,6 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
-// Debug
-const showDebug = new URLSearchParams(window.location.search).get('debug') === '1';
 if (showDebug) {
     const debugEl = document.createElement('div');
     debugEl.style.cssText = `
@@ -91,14 +54,12 @@ if (showDebug) {
         const lines = [
             `win: ${window.innerWidth}×${window.innerHeight}`,
             `orient: ${screen.orientation?.type || '?'}`,
-            `angle: ${screen.orientation?.angle ?? '?'}`,
-            `portrait: ${isPortrait}`
+            `angle: ${screen.orientation?.angle ?? '?'}`
         ];
         if (tg) {
             lines.push(`tg v${tg.version} | ${tg.platform}`);
             lines.push(`fullscr: ${tg.isFullscreen}`);
             lines.push(`orientLock: ${tg.isOrientationLocked}`);
-            lines.push(`expanded: ${tg.isExpanded}`);
         }
         debugEl.textContent = lines.join('\n');
     }, 1000);
@@ -278,9 +239,7 @@ function animate() {
     if (!player) return;
 
     const collisionRef = USE_COLLISION ? collision : null;
-
-    // Игра на паузе, если портрет
-    const playing = round.isPlaying() && !isPortrait;
+    const playing = round.isPlaying();
 
     if (playing) player.update(dt, joystick.direction, collisionRef);
 
@@ -325,12 +284,9 @@ function animate() {
 
     combat.update(dt, [...ctBots, ...tBots], player);
 
-    // Раунд тикает только если не portrait
-    if (!isPortrait) {
-        const aliveT = tBots.filter(b => b.alive).length + (player.alive ? 1 : 0);
-        const aliveCT = ctBots.filter(b => b.alive).length;
-        round.update(dt, aliveT, aliveCT);
-    }
+    const aliveT = tBots.filter(b => b.alive).length + (player.alive ? 1 : 0);
+    const aliveCT = ctBots.filter(b => b.alive).length;
+    round.update(dt, aliveT, aliveCT);
 
     hpEl.textContent = `HP: ${Math.round(player.hp)}`;
     roundTimerEl.textContent = Math.ceil(round.roundTimer);
@@ -353,6 +309,30 @@ function animate() {
 
     updateCamera();
     renderer.render(scene, camera);
+}
+
+// === Resize — пересчёт под новую ориентацию ===
+function onResize() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+    console.log('[resize]', w, '×', h, '| orient:', screen.orientation?.type || '?', '| angle:', screen.orientation?.angle ?? '?');
+}
+
+window.addEventListener('resize', onResize);
+window.addEventListener('orientationchange', () => {
+    // iOS не сразу обновляет размеры — вызываем несколько раз
+    setTimeout(onResize, 100);
+    setTimeout(onResize, 300);
+    setTimeout(onResize, 600);
+});
+
+if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', () => {
+        setTimeout(onResize, 50);
+    });
 }
 
 window.addEventListener('keydown', (e) => {
