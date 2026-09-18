@@ -7,7 +7,7 @@ import { CombatSystem } from './game/combat.js';
 import { CollisionSystem } from './game/collision.js';
 import { RoundManager } from './game/round.js';
 
-// === Telegram ===
+// === Telegram базовое ===
 const tg = window.Telegram?.WebApp;
 if (tg) {
     try {
@@ -20,15 +20,18 @@ if (tg) {
     } catch (e) {}
 }
 
-// === Rotate-hint: показываем 2 секунды при portrait ===
+// === Rotate-hint: показываем 2 сек при портрете ===
 const rotateHintEl = document.getElementById('rotate-hint');
 let rotateTimer = null;
 function checkOrientation() {
-    if (window.innerHeight > window.innerWidth) {
+    const isPortrait = window.innerHeight > window.innerWidth;
+    if (isPortrait) {
         rotateHintEl.style.display = 'flex';
+        rotateHintEl.style.opacity = '1';
         if (rotateTimer) clearTimeout(rotateTimer);
         rotateTimer = setTimeout(() => {
-            rotateHintEl.style.display = 'none';
+            rotateHintEl.style.opacity = '0';
+            setTimeout(() => { rotateHintEl.style.display = 'none'; }, 300);
         }, 2000);
     } else {
         rotateHintEl.style.display = 'none';
@@ -37,7 +40,7 @@ function checkOrientation() {
 }
 setTimeout(checkOrientation, 500);
 window.addEventListener('resize', checkOrientation);
-window.addEventListener('orientationchange', checkOrientation);
+window.addEventListener('orientationchange', () => setTimeout(checkOrientation, 100));
 
 // === Debug (с ?debug=1) ===
 const showDebug = new URLSearchParams(window.location.search).get('debug') === '1';
@@ -71,7 +74,10 @@ if (showDebug) {
     document.body.appendChild(debugEl);
     setInterval(() => {
         if (!tg) {
-            debugEl.textContent = `no Telegram\nwin: ${window.innerWidth}×${window.innerHeight}\norient: ${screen.orientation?.type || '?'}`;
+            debugEl.textContent =
+                `no Telegram\n` +
+                `win: ${window.innerWidth}×${window.innerHeight}\n` +
+                `orient: ${screen.orientation?.type || '?'}`;
             return;
         }
         debugEl.textContent =
@@ -81,7 +87,8 @@ if (showDebug) {
             `orientLock: ${tg.isOrientationLocked}\n` +
             `vh: ${Math.round(tg.viewportHeight)}/${Math.round(tg.viewportStableHeight)}\n` +
             `win: ${window.innerWidth}×${window.innerHeight}\n` +
-            `orient: ${screen.orientation?.type || '?'}`;
+            `orient: ${screen.orientation?.type || '?'}\n` +
+            `angle: ${screen.orientation?.angle ?? '?'}`;
     }, 1000);
 }
 
@@ -158,7 +165,7 @@ function updateScore(sT, sCT) {
     scoreCTEl.textContent = `CT ${sCT}`;
 }
 
-async function init() {
+async function initGame() {
     const { arena, colliders, data } = await createArena();
     scene.add(arena);
     collision = new CollisionSystem(colliders);
@@ -252,7 +259,6 @@ function updateCamera() {
 }
 
 const clock = new THREE.Clock();
-let debugTimer = 0;
 
 function animate() {
     requestAnimationFrame(animate);
@@ -263,14 +269,6 @@ function animate() {
     const playing = round.isPlaying();
 
     if (playing) player.update(dt, joystick.direction, collisionRef);
-
-    debugTimer += dt;
-    if (debugTimer > 2) {
-        debugTimer = 0;
-        console.log('[debug] pos:', player.mesh.position.x.toFixed(1), player.mesh.position.z.toFixed(1),
-            '| T:', tBots.filter(b => b.alive).length,
-            '| CT:', ctBots.filter(b => b.alive).length);
-    }
 
     const allBots = [...tBots, ...ctBots];
 
@@ -340,16 +338,33 @@ function animate() {
     renderer.render(scene, camera);
 }
 
+// === Resize с учётом поворота ===
+function onResize() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+    console.log('[resize]', w, '×', h, '| orient:', screen.orientation?.type || '?');
+}
+
+window.addEventListener('resize', onResize);
+window.addEventListener('orientationchange', () => {
+    setTimeout(onResize, 100);
+    setTimeout(onResize, 300);
+    setTimeout(onResize, 600);
+});
+
+if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', () => {
+        setTimeout(onResize, 50);
+    });
+}
+
 window.addEventListener('keydown', (e) => {
     if (e.key === 'c' || e.key === 'C' || e.key === 'с' || e.key === 'С') {
         USE_COLLISION = !USE_COLLISION;
     }
 });
 
-window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-});
-
-init();
+initGame();
