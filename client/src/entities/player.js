@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-const SPEED = 15;
+const SPEED = 20;
 const ATTACK_RANGE = 20;
 const ATTACK_COOLDOWN = 0.4;
 const SCALE = 1.5; // +50%
