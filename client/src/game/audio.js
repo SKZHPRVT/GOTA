@@ -1,4 +1,4 @@
-// ============ AUDIO MANAGER v2 — с пулом и лимитами ============
+// ============ AUDIO MANAGER v3 — spatial sound ============
 
 const SOUNDS = {
     shoot:          'sounds/ak47-1.mp3',
@@ -36,7 +36,6 @@ const DEFAULT_VOLUMES = {
     flashExplode:   0.75
 };
 
-// Максимум одновременных копий каждого звука
 const MAX_CONCURRENT = {
     shoot:          3,
     footstep:       1,
@@ -55,11 +54,17 @@ const MAX_CONCURRENT = {
     flashExplode:   1
 };
 
-// Минимальный интервал между запусками одного звука (сек)
 const MIN_INTERVAL = {
     shoot:    0.08,
     footstep: 0.55,
     default:  0
+};
+
+// Дистанции для пространственного звука
+const SPATIAL = {
+    maxDistance: 60,   // дальше — не играем
+    fullVolume:  30,   // ближе — полная громкость
+    minVolume:   0.15  // минимальный множитель (15% от базовой)
 };
 
 const cache = {};
@@ -157,7 +162,9 @@ export class AudioManager {
 
         const volume = (opts.volume ?? DEFAULT_VOLUMES[name] ?? 0.5) * this.masterVolume;
 
-        // Длинные — один объект, переиспользуем
+        // Пропускаем, если громкость ниже порога (не слышно)
+        if (volume < 0.005) return null;
+
         if (this.longSounds.includes(name)) {
             if (!this.currentLong[name]) {
                 this.currentLong[name] = base.cloneNode();
@@ -172,7 +179,6 @@ export class AudioManager {
             return sound;
         }
 
-        // Короткие — клонируем
         const sound = base.cloneNode();
         sound.volume = Math.min(1, Math.max(0, volume));
         if (opts.rate) sound.playbackRate = opts.rate;
@@ -210,6 +216,30 @@ export class AudioManager {
         }
     }
 
+    // === ПРОСТРАНСТВЕННЫЙ ЗВУК ВЫСТРЕЛА ===
+    shootSpatial(distance) {
+        // Дальше maxDistance — вообще не играем
+        if (distance > SPATIAL.maxDistance) return;
+
+        // Множитель громкости по дистанции
+        let volMul;
+        if (distance <= SPATIAL.fullVolume) {
+            volMul = 1.0;
+        } else {
+            // Линейное затухание от fullVolume до maxDistance
+            const t = (distance - SPATIAL.fullVolume) / (SPATIAL.maxDistance - SPATIAL.fullVolume);
+            volMul = 1.0 - t * (1.0 - SPATIAL.minVolume);
+        }
+
+        const volume = DEFAULT_VOLUMES.shoot * volMul;
+
+        this.play('shoot', {
+            rate: 0.95 + Math.random() * 0.1,
+            volume: volume
+        });
+    }
+
+    // Стандартный (без дистанции) — для игрока в упор
     shoot() {
         this.play('shoot', { rate: 0.95 + Math.random() * 0.1 });
     }
@@ -224,7 +254,6 @@ export class AudioManager {
     startRoundMusic() {
         this.play('roundMusic', { loop: true, force: true });
     }
-
     stopRoundMusic() { this.stop('roundMusic'); }
 
     winT() { this.play('winT'); }

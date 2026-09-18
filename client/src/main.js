@@ -25,12 +25,8 @@ if (tg) {
 const audio = new AudioManager();
 audio.preloadAll();
 
-// Unlock на iOS — на каждом тапе, пока не сработает
 document.addEventListener('touchstart', () => audio.unlock());
 document.addEventListener('click', () => audio.unlock());
-
-// === Debug ===
-const showDebug = new URLSearchParams(window.location.search).get('debug') === '1';
 
 // === Сцена ===
 const scene = new THREE.Scene();
@@ -126,7 +122,6 @@ const round = new RoundManager({
         setTimeout(() => {
             audio.roundStart();
             audio.startRoundMusic();
-            console.log('[round] music started, isPlaying:', round.isPlaying());
         }, 800);
     },
     onRoundEnd: (winner, reason, sT, sCT) => {
@@ -174,14 +169,11 @@ async function initGame() {
     spawnCT = data.spawns?.CT || spawnCT;
     plants = data.plants || [];
 
-    console.log('[main] plants:', plants);
-
     player = new Player(scene, 'T', spawnT);
     window.player = player;
 
     createTeams();
 
-    // Кнопки
     abilityBombEl.addEventListener('touchstart', (e) => {
         e.preventDefault();
         tryPlaceBomb();
@@ -272,7 +264,7 @@ function tryPlaceBomb() {
         return;
     }
 
-    logBomb(`Плэнт: ${nearestPlant.id}\nДист: ${nearestDist.toFixed(1)}\nРадиус: 20`);
+    logBomb(`Плэнт: ${nearestPlant.id}\nДист: ${nearestDist.toFixed(1)}`);
 
     if (nearestDist > 20) {
         audio.uiError();
@@ -320,6 +312,7 @@ function animate() {
 
     const allBots = [...tBots, ...ctBots];
 
+    // Игрок стреляет — звук обычный
     if (player.alive && playing) {
         const enemiesForPlayer = ctBots.filter(b => b.alive);
         const target = combat.findNearestTarget(player.mesh.position, enemiesForPlayer, player.attackRange);
@@ -332,12 +325,14 @@ function animate() {
                 if (player.attackTimer <= 0) {
                     player.attackTimer = player.attackCooldown;
                     combat.shoot(fromPos, target, 'T');
+                    // Свой выстрел — всегда слышен
                     audio.shoot();
                 }
             }
         }
     }
 
+    // Выстрелы ботов — ПРОСТРАНСТВЕННЫЕ
     if (playing) {
         const hasLOS = collision ? (a, b) => collision.hasLineOfSight(a, b) : () => true;
         for (const bot of tBots) {
@@ -346,7 +341,10 @@ function animate() {
             if (action?.type === 'shoot') {
                 const fakeTarget = { mesh: { position: action.from.clone().add(action.direction.clone().multiplyScalar(10)) } };
                 combat.shoot(action.from.clone().sub(new THREE.Vector3(0, 1.2, 0)), fakeTarget, 'T');
-                audio.shoot();
+
+                // Дистанция от игрока до бота
+                const dist = player.mesh.position.distanceTo(bot.mesh.position);
+                audio.shootSpatial(dist);
             }
         }
         for (const bot of ctBots) {
@@ -355,7 +353,9 @@ function animate() {
             if (action?.type === 'shoot') {
                 const fakeTarget = { mesh: { position: action.from.clone().add(action.direction.clone().multiplyScalar(10)) } };
                 combat.shoot(action.from.clone().sub(new THREE.Vector3(0, 1.2, 0)), fakeTarget, 'CT');
-                audio.shoot();
+
+                const dist = player.mesh.position.distanceTo(bot.mesh.position);
+                audio.shootSpatial(dist);
             }
         }
     }
