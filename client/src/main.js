@@ -7,11 +7,20 @@ import { CombatSystem } from './game/combat.js';
 import { CollisionSystem } from './game/collision.js';
 import { RoundManager } from './game/round.js';
 
-// @tma.js/sdk уже инициализирован в index.html.
-// Здесь просто проверяем, что Telegram доступен.
+// === Telegram ===
 const tg = window.Telegram?.WebApp;
+if (tg) {
+    try {
+        tg.ready();
+        tg.expand();
+        if (tg.requestFullscreen) tg.requestFullscreen();
+        if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
+        if (tg.setHeaderColor) tg.setHeaderColor('#000000');
+        if (tg.setBackgroundColor) tg.setBackgroundColor('#C2B280');
+    } catch (e) {}
+}
 
-// === Rotate-hint: показываем 2 сек при portrait ===
+// === Rotate-hint: показываем 2 секунды при portrait ===
 const rotateHintEl = document.getElementById('rotate-hint');
 let rotateTimer = null;
 function checkOrientation() {
@@ -61,11 +70,18 @@ if (showDebug) {
     `;
     document.body.appendChild(debugEl);
     setInterval(() => {
+        if (!tg) {
+            debugEl.textContent = `no Telegram\nwin: ${window.innerWidth}×${window.innerHeight}\norient: ${screen.orientation?.type || '?'}`;
+            return;
+        }
         debugEl.textContent =
+            `tg v${tg.version} | ${tg.platform}\n` +
+            `expanded: ${tg.isExpanded}\n` +
+            `fullscr: ${tg.isFullscreen}\n` +
+            `orientLock: ${tg.isOrientationLocked}\n` +
+            `vh: ${Math.round(tg.viewportHeight)}/${Math.round(tg.viewportStableHeight)}\n` +
             `win: ${window.innerWidth}×${window.innerHeight}\n` +
-            `orient: ${screen.orientation?.type || '?'}\n` +
-            `tg: ${tg ? 'yes v' + tg.version : 'no'}\n` +
-            (tg ? `fullscr: ${tg.isFullscreen}\norientLock: ${tg.isOrientationLocked}` : '');
+            `orient: ${screen.orientation?.type || '?'}`;
     }, 1000);
 }
 

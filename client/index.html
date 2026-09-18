@@ -8,83 +8,42 @@
     <meta name="full-screen" content="yes">
     <title>GOta</title>
 
-    <!-- @tma.js/sdk подключаем как ESM через importmap -->
-    <script type="importmap">
-    {
-        "imports": {
-            "@tma.js/sdk": "https://esm.sh/@tma.js/sdk@3"
-        }
-    }
-    </script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
-    <!-- Инициализация @tma.js/sdk до загрузки main.js -->
-    <script type="module">
-        import {
-            init,
-            miniApp,
-            viewport,
-            safeArea,
-            swipeBehavior,
-            retrieveLaunchParams
-        } from '@tma.js/sdk';
+    <script>
+        (function() {
+            var tg = window.Telegram && window.Telegram.WebApp;
+            if (!tg) return;
 
-        // Инициализация SDK
-        init();
+            try {
+                tg.ready();
+                tg.expand();
+                if (tg.requestFullscreen) tg.requestFullscreen();
+                if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
+                if (tg.setHeaderColor) tg.setHeaderColor('#000000');
+                if (tg.setBackgroundColor) tg.setBackgroundColor('#C2B280');
+            } catch (e) { console.error('[tg-head]', e); }
 
-        // Сообщаем Telegram, что готовы
-        try { miniApp.ready(); } catch (e) {}
-        try { miniApp.mount(); } catch (e) {}
-
-        // Монтируем viewport — это ключевое для fullscreen
-        try {
-            if (viewport.mount.isAvailable()) {
-                await viewport.mount();
-            }
-        } catch (e) { console.warn('viewport.mount:', e); }
-
-        // Пытаемся развернуть fullscreen
-        try {
-            viewport.expand();
-            if (viewport.requestFullscreen.isAvailable()) {
-                await viewport.requestFullscreen();
-            }
-        } catch (e) { console.warn('fullscreen:', e); }
-
-        // Блокируем вертикальные свайпы (сворачивание)
-        try {
-            if (swipeBehavior.disableVertical.isAvailable()) {
-                swipeBehavior.disableVertical();
-            }
-        } catch (e) {}
-
-        // Safe area
-        try { safeArea.mount(); } catch (e) {}
-
-        // Логируем launch params
-        try {
-            const lp = retrieveLaunchParams();
-            console.log('[tma] platform:', lp.platform);
-            console.log('[tma] version:', lp.version);
-        } catch (e) {}
-
-        // Лочим ориентацию по полной
-        try {
-            if (viewport.lockOrientation) {
-                viewport.lockOrientation('landscape');
-                console.log('[tma] orientation locked to landscape');
-            }
-        } catch (e) { console.warn('lockOrientation:', e); }
-
-        // Слушаем изменения viewport для логов
-        if (viewport.isFullscreen) {
-            viewport.isFullscreen.sub((isFs) => {
-                console.log('[tma] fullscreen changed:', isFs);
-                // Пробуем залочить ориентацию при входе в fullscreen
-                if (isFs && viewport.lockOrientation) {
-                    try { viewport.lockOrientation('landscape'); } catch (e) {}
+            // Пытаемся лочить landscape, но не критично
+            var tryLock = function() {
+                if (tg.lockOrientation) {
+                    try { tg.lockOrientation('landscape'); } catch (e) {}
                 }
-            });
-        }
+            };
+
+            if (tg.onEvent) {
+                tg.onEvent('fullscreenChanged', function() {
+                    if (tg.isFullscreen) tryLock();
+                });
+            }
+            setTimeout(function() {
+                if (tg.isFullscreen) tryLock();
+            }, 500);
+            document.addEventListener('touchstart', function once() {
+                tryLock();
+                document.removeEventListener('touchstart', once);
+            }, { once: true });
+        })();
     </script>
 
     <style>
