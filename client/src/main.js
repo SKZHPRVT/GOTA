@@ -17,27 +17,46 @@ if (tg) {
         if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
         if (tg.setHeaderColor) tg.setHeaderColor('#000000');
         if (tg.setBackgroundColor) tg.setBackgroundColor('#C2B280');
-        if (tg.lockOrientation) {
-            try { tg.lockOrientation('landscape'); } catch (e) {}
-        }
     } catch (e) { console.error('[tg-main]', e); }
 
-    // Fallback: лочим landscape после fullscreen и по тапу
-    if (tg.onEvent) {
-        tg.onEvent('fullscreenChanged', () => {
-            if (tg.isFullscreen && tg.lockOrientation) {
-                try { tg.lockOrientation('landscape'); } catch (e) {}
-            }
-        });
-    }
-
-    document.addEventListener('touchstart', function tryLock() {
+    // Пытаемся лочить landscape, но не полагаемся на это
+    const tryLock = () => {
         if (tg.lockOrientation) {
             try { tg.lockOrientation('landscape'); } catch (e) {}
         }
-        document.removeEventListener('touchstart', tryLock);
+    };
+    if (tg.onEvent) {
+        tg.onEvent('fullscreenChanged', () => {
+            if (tg.isFullscreen) tryLock();
+        });
+    }
+    document.addEventListener('touchstart', function once() {
+        tryLock();
+        document.removeEventListener('touchstart', once);
     }, { once: true });
 }
+
+// === Rotate-hint: показываем только 2 сек если portrait ===
+const rotateHintEl = document.getElementById('rotate-hint');
+let rotateHintTimer = null;
+
+function checkOrientation() {
+    const isPortrait = window.innerHeight > window.innerWidth;
+    if (isPortrait) {
+        rotateHintEl.style.display = 'flex';
+        if (rotateHintTimer) clearTimeout(rotateHintTimer);
+        rotateHintTimer = setTimeout(() => {
+            rotateHintEl.style.display = 'none';
+        }, 2000);
+    } else {
+        rotateHintEl.style.display = 'none';
+        if (rotateHintTimer) clearTimeout(rotateHintTimer);
+    }
+}
+
+window.addEventListener('resize', checkOrientation);
+window.addEventListener('orientationchange', checkOrientation);
+setTimeout(checkOrientation, 500);
 
 // === Debug-панель (только с ?debug=1) ===
 const showDebug = new URLSearchParams(window.location.search).get('debug') === '1';
@@ -63,7 +82,10 @@ if (showDebug) {
 
     const updateDebug = () => {
         if (!tg) {
-            debugEl.textContent = `no Telegram\ninnerH: ${window.innerHeight}`;
+            debugEl.textContent =
+                `no Telegram\n` +
+                `innerW×H: ${window.innerWidth}×${window.innerHeight}\n` +
+                `orient: ${screen.orientation?.type || '?'}`;
             return;
         }
         debugEl.textContent =
@@ -72,8 +94,8 @@ if (showDebug) {
             `fullscr: ${tg.isFullscreen}\n` +
             `orientLock: ${tg.isOrientationLocked}\n` +
             `vh: ${Math.round(tg.viewportHeight)}/${Math.round(tg.viewportStableHeight)}\n` +
-            `inner: ${window.innerHeight}\n` +
-            `screen: ${window.screen.width}x${window.screen.height}\n` +
+            `inner: ${window.innerWidth}×${window.innerHeight}\n` +
+            `screen: ${window.screen.width}×${window.screen.height}\n` +
             `orient: ${screen.orientation?.type || '?'}`;
     };
     updateDebug();
