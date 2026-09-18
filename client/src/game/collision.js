@@ -1,7 +1,7 @@
 export class CollisionSystem {
     constructor(colliders) {
         this.colliders = colliders;
-        this.playerRadius = 0.4;
+        this.playerRadius = 1.0;   // было 0.4 — увеличили под ×4 персонажей
     }
 
     canMoveTo(x, z) {
@@ -37,14 +37,13 @@ export class CollisionSystem {
         return { x: newX, z: newZ };
     }
 
-    // Проверка: прямая видимость между двумя точками (не пересекает ли стены)
     hasLineOfSight(from, to) {
         const dx = to.x - from.x;
         const dz = to.z - from.z;
         const dist = Math.hypot(dx, dz);
         if (dist < 0.001) return true;
 
-        const steps = Math.ceil(dist / 0.5); // шаг 0.5 юнита
+        const steps = Math.ceil(dist / 0.5);
         const stepX = dx / steps;
         const stepZ = dz / steps;
 

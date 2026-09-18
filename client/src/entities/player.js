@@ -3,7 +3,7 @@ import * as THREE from 'three';
 const SPEED = 20;
 const ATTACK_RANGE = 20;
 const ATTACK_COOLDOWN = 0.8;
-const SCALE = 2.0;
+const SCALE = 4.0;
 
 const toonGradient = (() => {
     const colors = new Uint8Array([80, 160, 220, 255]);
@@ -48,6 +48,7 @@ export class Player {
         this.mesh = new THREE.Group();
         this.mesh.scale.setScalar(SCALE);
 
+        // Ноги
         const legGeo = new THREE.CylinderGeometry(0.14, 0.14, 0.5, 8);
         const legMat = toonMat(colors.legs);
         this.legL = new THREE.Mesh(legGeo, legMat);
@@ -61,6 +62,7 @@ export class Player {
         addOutline(this.legR, 0.1);
         this.mesh.add(this.legR);
 
+        // Туловище
         const bodyGeo = new THREE.CylinderGeometry(0.32, 0.35, 0.7, 12);
         const bodyMat = toonMat(colors.body);
         this.body = new THREE.Mesh(bodyGeo, bodyMat);
@@ -78,42 +80,46 @@ export class Player {
             this.mesh.add(this.vest);
         }
 
-        const headGeo = new THREE.OctahedronGeometry(0.42, 0);
+        // === ГОЛОВА — КУБ (большая квадратная) ===
+        const headGeo = new THREE.BoxGeometry(0.85, 0.85, 0.85);
         const headMat = toonMat(colors.head);
         this.head = new THREE.Mesh(headGeo, headMat);
-        this.head.position.y = 1.55;
-        this.head.scale.set(1, 0.95, 1);
+        this.head.position.y = 1.6;
         this.head.castShadow = true;
         addOutline(this.head, 0.06);
         this.mesh.add(this.head);
 
         if (!isT) {
-            const helmetGeo = new THREE.SphereGeometry(0.45, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+            // Шлем CT — шапка сверху
+            const helmetGeo = new THREE.BoxGeometry(0.9, 0.35, 0.9);
             const helmetMat = toonMat(0x1A2A3A);
             this.helmet = new THREE.Mesh(helmetGeo, helmetMat);
-            this.helmet.position.y = 1.6;
+            this.helmet.position.y = 1.95;
             addOutline(this.helmet, 0.06);
             this.mesh.add(this.helmet);
         }
 
         if (isT) {
-            const bandGeo = new THREE.BoxGeometry(0.75, 0.08, 0.75);
+            // Бандана T — полоска
+            const bandGeo = new THREE.BoxGeometry(0.9, 0.15, 0.9);
             const bandMat = toonMat(colors.accent);
             this.bandana = new THREE.Mesh(bandGeo, bandMat);
-            this.bandana.position.y = 1.68;
+            this.bandana.position.y = 1.9;
             addOutline(this.bandana, 0.1);
             this.mesh.add(this.bandana);
         }
 
-        const eyeGeo = new THREE.SphereGeometry(0.06, 6, 6);
+        // Глаза
+        const eyeGeo = new THREE.SphereGeometry(0.08, 6, 6);
         const eyeMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
         const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
-        eyeL.position.set(-0.15, 1.6, -0.35);
+        eyeL.position.set(-0.22, 1.65, -0.43);
         this.mesh.add(eyeL);
         const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
-        eyeR.position.set(0.15, 1.6, -0.35);
+        eyeR.position.set(0.22, 1.65, -0.43);
         this.mesh.add(eyeR);
 
+        // Руки
         const armGeo = new THREE.CylinderGeometry(0.09, 0.09, 0.55, 6);
         const armMat = toonMat(colors.arms);
         this.armL = new THREE.Mesh(armGeo, armMat);
@@ -129,6 +135,7 @@ export class Player {
         addOutline(this.armR, 0.1);
         this.mesh.add(this.armR);
 
+        // Оружие
         this.gun = new THREE.Group();
         const gunBody = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.9), toonMat(colors.gun));
         this.gun.add(gunBody);
@@ -141,19 +148,19 @@ export class Player {
         this.gun.position.set(0.55, 0.95, -0.45);
         this.mesh.add(this.gun);
 
-        // HP-бар — вне scale
+        // HP-бар
         this.hpBarBg = new THREE.Mesh(
-            new THREE.PlaneGeometry(1.6, 0.2),
+            new THREE.PlaneGeometry(2.0, 0.25),
             new THREE.MeshBasicMaterial({ color: 0x000000 })
         );
-        this.hpBarBg.position.y = 2.6;
+        this.hpBarBg.position.y = 2.9;
         this.mesh.add(this.hpBarBg);
 
         this.hpBar = new THREE.Mesh(
-            new THREE.PlaneGeometry(1.6, 0.2),
+            new THREE.PlaneGeometry(2.0, 0.25),
             new THREE.MeshBasicMaterial({ color: 0x00FF00 })
         );
-        this.hpBar.position.y = 2.6;
+        this.hpBar.position.y = 2.9;
         this.hpBar.position.z = 0.01;
         this.mesh.add(this.hpBar);
 
@@ -204,7 +211,7 @@ export class Player {
 
         const hpPercent = Math.max(0, this.hp / this.maxHp);
         this.hpBar.scale.x = hpPercent;
-        this.hpBar.position.x = -(1 - hpPercent) * 0.8;
+        this.hpBar.position.x = -(1 - hpPercent) * 1.0;
     }
 
     faceTarget(targetPos) {

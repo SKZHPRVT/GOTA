@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { Bullet } from '../entities/bullet.js';
 
+const HIT_RADIUS = 2.5;   // было 1.0 — увеличили под ×4 персонажей
+
 export class CombatSystem {
     constructor(scene) {
         this.scene = scene;
@@ -23,7 +25,7 @@ export class CombatSystem {
     }
 
     shoot(from, target, team) {
-        const startPos = from.clone().add(new THREE.Vector3(0, 1.2, 0));
+        const startPos = from.clone().add(new THREE.Vector3(0, 1.6, 0));
         const direction = new THREE.Vector3()
             .subVectors(target.mesh.position, startPos)
             .normalize();
@@ -43,7 +45,7 @@ export class CombatSystem {
                     if (!e.alive) continue;
                     if (e.team === 'T') continue;
                     const dist = bullet.mesh.position.distanceTo(e.mesh.position);
-                    if (dist < 1.0) {
+                    if (dist < HIT_RADIUS) {
                         e.takeDamage(bullet.damage);
                         bullet.destroy();
                         break;
@@ -52,7 +54,7 @@ export class CombatSystem {
             } else {
                 if (player.alive) {
                     const dist = bullet.mesh.position.distanceTo(player.mesh.position);
-                    if (dist < 1.0) {
+                    if (dist < HIT_RADIUS) {
                         player.takeDamage(bullet.damage);
                         bullet.destroy();
                         if (onPlayerDamage) onPlayerDamage(bullet.damage);
