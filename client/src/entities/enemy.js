@@ -1,9 +1,8 @@
 import * as THREE from 'three';
 
-const SPEED = 8;
-const ATTACK_RANGE = 18;
+const ATTACK_RANGE = 22;
 const ATTACK_COOLDOWN = 1.2;
-const SCALE = 1.5; // +50%
+const SCALE = 1.5;
 
 const toonGradient = (() => {
     const colors = new Uint8Array([80, 160, 220, 255]);
@@ -31,18 +30,25 @@ function addOutline(mesh, thickness = 0.08) {
 export class Enemy {
     constructor(scene, team = 'CT', position = { x: 0, z: -42 }) {
         this.scene = scene;
-        this.team = team;
+        this.team = team; // 'T' или 'CT'
         this.hp = 100;
         this.maxHp = 100;
         this.alive = true;
-        this.speed = SPEED;
+
+        // T-боты медленнее, CT быстрее
+        this.speed = team === 'T' ? 7 : 8;
+
         this.attackTimer = 0;
+        this.target = null; // текущая цель (Enemy или Player)
+
+        const bodyColor = team === 'T' ? 0xDDAA33 : 0xCC3333; // жёлтый vs красный
+        const legColor = 0x222222;
 
         this.mesh = new THREE.Group();
         this.mesh.scale.setScalar(SCALE);
 
         const bodyGeo = new THREE.BoxGeometry(0.9, 0.9, 0.7);
-        const bodyMat = toonMat(0xCC3333);
+        const bodyMat = toonMat(bodyColor);
         this.body = new THREE.Mesh(bodyGeo, bodyMat);
         this.body.position.y = 0.45;
         this.body.castShadow = true;
@@ -58,7 +64,7 @@ export class Enemy {
         this.mesh.add(this.head);
 
         const noseGeo = new THREE.BoxGeometry(0.15, 0.15, 0.35);
-        const noseMat = toonMat(0x660000);
+        const noseMat = toonMat(team === 'T' ? 0xFF6600 : 0x660000);
         this.nose = new THREE.Mesh(noseGeo, noseMat);
         this.nose.position.set(0, 1.3, -0.6);
         addOutline(this.nose, 0.15);
@@ -74,7 +80,7 @@ export class Enemy {
         this.mesh.add(eyeR);
 
         const legGeo = new THREE.BoxGeometry(0.25, 0.4, 0.25);
-        const legMat = toonMat(0x222222);
+        const legMat = toonMat(legColor);
         this.legL = new THREE.Mesh(legGeo, legMat);
         this.legL.position.set(-0.25, 0.2, 0);
         addOutline(this.legL, 0.12);
@@ -84,6 +90,7 @@ export class Enemy {
         addOutline(this.legR, 0.12);
         this.mesh.add(this.legR);
 
+        // HP-бар
         const hpBarBg = new THREE.Mesh(
             new THREE.PlaneGeometry(1.2, 0.15),
             new THREE.MeshBasicMaterial({ color: 0x000000 })
@@ -93,7 +100,7 @@ export class Enemy {
 
         this.hpBar = new THREE.Mesh(
             new THREE.PlaneGeometry(1.2, 0.15),
-            new THREE.MeshBasicMaterial({ color: 0x00FF00 })
+            new THREE.MeshBasicMaterial({ color: team === 'T' ? 0xFFD24A : 0xFF6666 })
         );
         this.hpBar.position.y = 2.1;
         this.hpBar.position.z = 0.01;
@@ -105,31 +112,74 @@ export class Enemy {
         this.animTime = 0;
     }
 
-    update(dt, playerPos, collision = null, hasLineOfSight = true) {
+    // Ищем ближайшего врага
+    findTarget(enemyList, playerPos, playerAlive) {
+        let nearest = null;
+        let nearestDist = Infinity;
+
+        // Проверяем врагов (ботов другой команды)
+        for (const e of enemyList) {
+            if (!e.alive || e === this) continue;
+            if (e.team === this.team) continue;
+            const d = this.mesh.position.distanceTo(e.mesh.position);
+            if (d < nearestDist) {
+                nearestDist = d;
+                nearest = e;
+            }
+        }
+
+        // Проверяем игрока, если он враг
+        if (playerAlive && playerPos) {
+            const playerTeam = 'T';
+            if (playerTeam !== this.team) {
+                const d = this.mesh.position.distanceTo(playerPos);
+                if (d < nearestDist) {
+                    nearestDist = d;
+                    nearest = { mesh: { position: playerPos }, alive: true, _isPlayer: true };
+                }
+            }
+        }
+
+        this.target = nearest;
+        return nearest;
+    }
+
+    update(dt, enemyList, playerPos, playerAlive, collision = null, hasLOS = () => true) {
         if (!this.alive) return null;
 
         const hpPercent = Math.max(0, this.hp / this.maxHp);
         this.hpBar.scale.x = hpPercent;
         this.hpBar.position.x = -(1 - hpPercent) * 0.6;
 
-        const toPlayer = new THREE.Vector3().subVectors(playerPos, this.mesh.position);
-        const distToPlayer = toPlayer.length();
+        const target = this.findTarget(enemyList, playerPos, playerAlive);
+        if (!target) return null;
+
+        const toTarget = new THREE.Vector3().subVectors(
+            target.mesh.position, this.mesh.position
+        );
+        const distToTarget = toTarget.length();
 
         this.attackTimer -= dt;
 
-        // Атака — только если есть прямая видимость
-        if (distToPlayer < ATTACK_RANGE && this.attackTimer <= 0 && hasLineOfSight) {
+        // Атака
+        if (
+            distToTarget < ATTACK_RANGE &&
+            this.attackTimer <= 0 &&
+            hasLOS(this.mesh.position, target.mesh.position)
+        ) {
             this.attackTimer = ATTACK_COOLDOWN;
             return {
                 type: 'shoot',
                 from: this.mesh.position.clone().add(new THREE.Vector3(0, 1.2, 0)),
-                direction: toPlayer.clone().normalize(),
-                team: this.team
+                direction: toTarget.clone().normalize(),
+                team: this.team,
+                targetRef: target
             };
         }
 
-        if (distToPlayer > ATTACK_RANGE * 0.7) {
-            const moveDir = toPlayer.clone().normalize().multiplyScalar(this.speed * dt);
+        // Движение к цели
+        if (distToTarget > ATTACK_RANGE * 0.7) {
+            const moveDir = toTarget.clone().normalize().multiplyScalar(this.speed * dt);
             if (collision) {
                 const cur = this.mesh.position;
                 const res = collision.resolveMove(cur.x, cur.z, moveDir.x, moveDir.z);
@@ -139,7 +189,7 @@ export class Enemy {
                 this.mesh.position.add(moveDir);
             }
 
-            const angle = Math.atan2(toPlayer.x, toPlayer.z);
+            const angle = Math.atan2(toTarget.x, toTarget.z);
             this.mesh.rotation.y = angle + Math.PI;
 
             this.animTime += dt * 12;
@@ -147,7 +197,7 @@ export class Enemy {
             this.legL.position.z = swing;
             this.legR.position.z = -swing;
         } else {
-            const angle = Math.atan2(toPlayer.x, toPlayer.z);
+            const angle = Math.atan2(toTarget.x, toTarget.z);
             this.mesh.rotation.y = angle + Math.PI;
             this.legL.position.z = 0;
             this.legR.position.z = 0;
