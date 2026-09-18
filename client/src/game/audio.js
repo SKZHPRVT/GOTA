@@ -37,21 +37,9 @@ const DEFAULT_VOLUMES = {
 };
 
 const MAX_CONCURRENT = {
-    shoot:          3,
-    footstep:       1,
-    freezeEnd:      1,
-    roundStart:     1,
-    roundMusic:     1,
-    winT:           1,
-    winCT:          1,
-    bombPlaced:     1,
-    bombTick:       1,
-    bombDefused:    1,
-    c4Disarm:       1,
-    bombExplode:    1,
-    grenadeThrow:   2,
-    grenadeExplode: 2,
-    flashExplode:   1
+    shoot: 3, footstep: 1, freezeEnd: 1, roundStart: 1, roundMusic: 1,
+    winT: 1, winCT: 1, bombPlaced: 1, bombTick: 1, bombDefused: 1,
+    c4Disarm: 1, bombExplode: 1, grenadeThrow: 2, grenadeExplode: 2, flashExplode: 1
 };
 
 const MIN_INTERVAL = {
@@ -93,10 +81,8 @@ export class AudioManager {
         this.enabled = true;
         this.masterVolume = 0.65;
         this.loaded = {};
-
         this.activeCount = {};
         this.lastPlay = {};
-
         this.longSounds = ['roundMusic', 'bombTick', 'c4Disarm'];
         this.currentLong = {};
     }
@@ -116,7 +102,6 @@ export class AudioManager {
         }
     }
 
-    // === С колбэком прогресса ===
     async preloadAll(onProgress) {
         console.log('[audio] preloading...');
         const entries = Object.entries(SOUNDS);
@@ -141,31 +126,30 @@ export class AudioManager {
 
     canPlay(name) {
         const now = performance.now() / 1000;
-
         const interval = MIN_INTERVAL[name] ?? MIN_INTERVAL.default;
         if (interval > 0) {
             const last = this.lastPlay[name] || 0;
             if (now - last < interval) return false;
         }
-
         const max = MAX_CONCURRENT[name] || 2;
         const active = this.activeCount[name] || 0;
         if (active >= max) return false;
-
         return true;
     }
 
     play(name, opts = {}) {
         if (!this.enabled) return null;
         const base = cache[name];
-        if (!base) return null;
+        if (!base) {
+            console.warn('[audio] no cache for', name);
+            return null;
+        }
 
         if (!opts.force && !this.canPlay(name)) {
             return null;
         }
 
         const volume = (opts.volume ?? DEFAULT_VOLUMES[name] ?? 0.5) * this.masterVolume;
-
         if (volume < 0.005) return null;
 
         if (this.longSounds.includes(name)) {
@@ -212,75 +196,49 @@ export class AudioManager {
             } catch (e) {}
         }
     }
-
     stopAllLong() {
-        for (const name of this.longSounds) {
-            this.stop(name);
-        }
+        for (const name of this.longSounds) this.stop(name);
     }
 
     shootSpatial(distance) {
         if (distance > SPATIAL.maxDistance) return;
-
         let volMul;
-        if (distance <= SPATIAL.fullVolume) {
-            volMul = 1.0;
-        } else {
+        if (distance <= SPATIAL.fullVolume) volMul = 1.0;
+        else {
             const t = (distance - SPATIAL.fullVolume) / (SPATIAL.maxDistance - SPATIAL.fullVolume);
             volMul = 1.0 - t * (1.0 - SPATIAL.minVolume);
         }
-
-        const volume = DEFAULT_VOLUMES.shoot * volMul;
-
         this.play('shoot', {
             rate: 0.95 + Math.random() * 0.1,
-            volume: volume
+            volume: DEFAULT_VOLUMES.shoot * volMul
         });
     }
 
-    shoot() {
-        this.play('shoot', { rate: 0.95 + Math.random() * 0.1 });
-    }
-
-    footstep() {
-        this.play('footstep', { rate: 0.9 + Math.random() * 0.2 });
-    }
-
+    shoot() { this.play('shoot', { rate: 0.95 + Math.random() * 0.1 }); }
+    footstep() { this.play('footstep', { rate: 0.9 + Math.random() * 0.2 }); }
     freezeEnd() { this.play('freezeEnd'); }
     roundStart() { this.play('roundStart'); }
-
-    startRoundMusic() {
-        this.play('roundMusic', { loop: true, force: true });
-    }
+    startRoundMusic() { this.play('roundMusic', { loop: true, force: true }); }
     stopRoundMusic() { this.stop('roundMusic'); }
-
     winT() { this.play('winT'); }
     winCT() { this.play('winCT'); }
 
-    bombPlaced() { this.play('bombPlaced'); }
+    bombPlaced() { this.play('bombPlaced', { force: true }); }
 
-    startBombTick() {
-        this.play('bombTick', { loop: true, force: true });
-    }
+    startBombTick() { this.play('bombTick', { loop: true, force: true }); }
     stopBombTick() { this.stop('bombTick'); }
-
-    bombDefused() { this.play('bombDefused'); }
-
-    startDisarm() {
-        this.play('c4Disarm', { loop: true, force: true });
-    }
+    bombDefused() { this.play('bombDefused', { force: true }); }
+    startDisarm() { this.play('c4Disarm', { loop: true, force: true }); }
     stopDisarm() { this.stop('c4Disarm'); }
-
-    bombExplode() { this.play('bombExplode'); }
+    bombExplode() { this.play('bombExplode', { force: true }); }
 
     grenadeThrow() { this.play('grenadeThrow'); }
     grenadeExplode() { this.play('grenadeExplode'); }
     flashExplode() { this.play('flashExplode'); }
+    uiClick() { /* no ui sound */ }
+    uiError() { /* no ui sound */ }
 
-    setMasterVolume(v) {
-        this.masterVolume = Math.min(1, Math.max(0, v));
-    }
-
+    setMasterVolume(v) { this.masterVolume = Math.min(1, Math.max(0, v)); }
     toggle() {
         this.enabled = !this.enabled;
         if (!this.enabled) this.stopAllLong();

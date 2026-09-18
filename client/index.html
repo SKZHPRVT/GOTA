@@ -11,13 +11,6 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
-        :root {
-            --content-top: var(--tg-content-safe-area-inset-top, 0px);
-            --content-bottom: var(--tg-content-safe-area-inset-bottom, 0px);
-            --content-left: var(--tg-content-safe-area-inset-left, 0px);
-            --content-right: var(--tg-content-safe-area-inset-right, 0px);
-        }
-
         html, body {
             width: 100%;
             height: 100%;
@@ -33,7 +26,7 @@
         }
         canvas { display: block; width: 100%; height: 100%; }
 
-        /* === LOADING SCREEN === */
+        /* LOADING */
         #loading-screen {
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
@@ -45,189 +38,114 @@
             z-index: 9999;
             transition: opacity 0.5s ease-out;
         }
-        #loading-screen.hide {
-            opacity: 0;
-            pointer-events: none;
-        }
-
+        #loading-screen.hide { opacity: 0; pointer-events: none; }
         #loading-logo {
-            font-size: 64px;
-            font-weight: bold;
+            font-size: 64px; font-weight: bold;
             color: #FFD24A;
             text-shadow: 0 0 30px rgba(255, 210, 74, 0.6), 4px 4px 8px #000;
-            margin-bottom: 8px;
-            letter-spacing: 4px;
+            margin-bottom: 8px; letter-spacing: 4px;
         }
         #loading-subtitle {
-            font-size: 14px;
-            color: #C2B280;
-            margin-bottom: 48px;
-            letter-spacing: 2px;
-            opacity: 0.8;
+            font-size: 14px; color: #C2B280;
+            margin-bottom: 48px; letter-spacing: 2px; opacity: 0.8;
         }
-
         #loading-bar-container {
-            width: 280px;
-            height: 8px;
+            width: 280px; height: 8px;
             background: rgba(0,0,0,0.6);
             border: 2px solid rgba(255,210,74,0.4);
-            border-radius: 6px;
-            overflow: hidden;
-            margin-bottom: 16px;
+            border-radius: 6px; overflow: hidden; margin-bottom: 16px;
         }
         #loading-bar-fill {
-            width: 0%;
-            height: 100%;
+            width: 0%; height: 100%;
             background: linear-gradient(90deg, #FFD24A, #FFA500);
-            border-radius: 4px;
-            transition: width 0.2s ease-out;
+            border-radius: 4px; transition: width 0.2s ease-out;
             box-shadow: 0 0 10px rgba(255,210,74,0.8);
         }
-
         #loading-text {
-            font-size: 14px;
-            color: #FFD24A;
-            font-weight: bold;
-            margin-bottom: 4px;
-            min-height: 20px;
+            font-size: 14px; color: #FFD24A; font-weight: bold;
+            margin-bottom: 4px; min-height: 20px;
         }
         #loading-percent {
-            font-size: 22px;
-            color: #fff;
-            font-weight: bold;
+            font-size: 22px; color: #fff; font-weight: bold;
             text-shadow: 1px 1px 2px #000;
         }
 
-        #loading-hint {
-            position: absolute;
-            bottom: 40px;
-            font-size: 12px;
-            color: #C2B280;
-            opacity: 0.6;
-            text-align: center;
-            padding: 0 20px;
-        }
-
-        /* === TOP HUD === */
+        /* TOP HUD — ПРИЖАТ К ВЕРХУ */
         #top-hud {
             position: fixed;
-            top: calc(8px + var(--content-top));
-            left: 50%;
-            transform: translateX(-50%);
+            top: 4px;
+            left: 0;
+            right: 0;
             z-index: 10;
             display: flex;
             align-items: center;
-            gap: 12px;
+            justify-content: center;
+            gap: 8px;
             pointer-events: none;
         }
         .score-box {
-            background: rgba(0,0,0,0.65);
+            background: rgba(0,0,0,0.7);
             border: 2px solid rgba(255,255,255,0.3);
-            border-radius: 10px;
-            padding: 6px 18px;
+            border-radius: 8px;
+            padding: 4px 14px;
             font-weight: bold;
             text-shadow: 1px 1px 2px #000;
         }
-        #score-t { color: #FFD24A; font-size: 24px; }
-        #score-ct { color: #5CA8FF; font-size: 24px; }
+        #score-t { color: #FFD24A; font-size: 20px; }
+        #score-ct { color: #5CA8FF; font-size: 20px; }
         #round-timer {
             color: #fff;
-            font-size: 22px;
-            background: rgba(0,0,0,0.65);
+            font-size: 18px;
+            background: rgba(0,0,0,0.7);
             border: 2px solid rgba(255,255,255,0.3);
-            border-radius: 10px;
-            padding: 6px 14px;
-            min-width: 70px;
+            border-radius: 8px;
+            padding: 4px 12px;
+            min-width: 60px;
             text-align: center;
         }
-        #round-info {
-            position: fixed;
-            top: calc(60px + var(--content-top));
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 10;
-            font-size: 12px;
-            opacity: 0.8;
-            text-shadow: 1px 1px 2px #000;
-            pointer-events: none;
-        }
 
-        /* BOMB COMPASS */
-        #bomb-compass {
-            position: fixed;
-            top: calc(85px + var(--content-top));
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 12;
-            display: none;
-            flex-direction: column;
-            align-items: center;
-            gap: 4px;
-            pointer-events: none;
-        }
-        #bomb-compass.show { display: flex; }
-        #compass-arrow {
-            font-size: 28px;
-            color: #ff3030;
-            text-shadow: 0 0 10px #ff0000;
-            transition: transform 0.15s linear;
-            display: inline-block;
-        }
-        #compass-distance {
-            font-size: 12px;
-            font-weight: bold;
-            color: #ffd24a;
-            background: rgba(0,0,0,0.6);
-            padding: 2px 10px;
-            border-radius: 6px;
-        }
-
-        /* BOMB HUD */
+        /* BOMB TIMER — под счётом, 14px */
         #bomb-hud {
             position: fixed;
-            top: calc(140px + var(--content-top));
+            top: 42px;
             left: 50%;
             transform: translateX(-50%);
             z-index: 15;
             display: none;
             flex-direction: column;
             align-items: center;
-            gap: 4px;
+            gap: 3px;
             pointer-events: none;
         }
         #bomb-hud.show { display: flex; }
         #bomb-timer {
-            font-size: 24px;
+            font-size: 18px;
             font-weight: bold;
             color: #ff3030;
-            text-shadow: 0 0 12px #ff0000, 2px 2px 4px #000;
-            padding: 4px 14px;
-            background: rgba(0,0,0,0.7);
+            text-shadow: 0 0 8px #ff0000, 1px 1px 3px #000;
+            padding: 2px 10px;
+            background: rgba(0,0,0,0.75);
             border: 2px solid #ff3030;
-            border-radius: 8px;
-            letter-spacing: 2px;
+            border-radius: 6px;
+            letter-spacing: 1px;
         }
         #bomb-status {
-            font-size: 13px;
+            font-size: 11px;
             font-weight: bold;
-            padding: 3px 12px;
+            padding: 2px 8px;
             background: rgba(0,0,0,0.6);
-            border-radius: 6px;
-            text-shadow: 1px 1px 2px #000;
+            border-radius: 4px;
         }
         #defuse-bar {
-            width: 200px;
-            height: 12px;
+            width: 140px; height: 8px;
             background: rgba(0,0,0,0.7);
             border: 2px solid #fff;
-            border-radius: 6px;
-            overflow: hidden;
+            border-radius: 4px; overflow: hidden;
             display: none;
         }
         #defuse-bar.show { display: block; }
         #defuse-bar-fill {
-            width: 0%;
-            height: 100%;
+            width: 0%; height: 100%;
             background: linear-gradient(90deg, #00cc00, #00ff00);
             transition: width 0.1s linear;
         }
@@ -235,8 +153,8 @@
         /* HP */
         #hp-hud {
             position: fixed;
-            bottom: calc(20px + var(--content-bottom));
-            left: calc(190px + var(--content-left));
+            bottom: 20px;
+            left: 190px;
             font-size: 22px;
             font-weight: bold;
             text-shadow: 2px 2px 3px #000;
@@ -248,8 +166,7 @@
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
             background: radial-gradient(ellipse at center,
-                rgba(255,0,0,0) 30%,
-                rgba(255,0,0,0.5) 100%);
+                rgba(255,0,0,0) 30%, rgba(255,0,0,0.6) 100%);
             opacity: 0;
             z-index: 8;
             pointer-events: none;
@@ -259,8 +176,7 @@
 
         #joystick {
             position: fixed;
-            bottom: calc(30px + var(--content-bottom));
-            left: calc(30px + var(--content-left));
+            bottom: 30px; left: 30px;
             width: 140px; height: 140px;
             background: rgba(255,255,255,0.1);
             border: 2px solid rgba(255,255,255,0.3);
@@ -279,10 +195,8 @@
         }
         #abilities {
             position: fixed;
-            bottom: calc(30px + var(--content-bottom));
-            right: calc(30px + var(--content-right));
-            display: flex;
-            gap: 14px;
+            bottom: 30px; right: 30px;
+            display: flex; gap: 14px;
             z-index: 10;
         }
         .ability {
@@ -324,12 +238,9 @@
     <div id="loading-screen">
         <div id="loading-logo">GOta</div>
         <div id="loading-subtitle">DOTA × COUNTER-STRIKE</div>
-        <div id="loading-bar-container">
-            <div id="loading-bar-fill"></div>
-        </div>
+        <div id="loading-bar-container"><div id="loading-bar-fill"></div></div>
         <div id="loading-text">Загрузка...</div>
         <div id="loading-percent">0%</div>
-        <div id="loading-hint">Загрузка звуков и карты. Это может занять несколько секунд.</div>
     </div>
 
     <div id="damage-flash"></div>
@@ -339,25 +250,16 @@
         <div id="round-timer">60</div>
         <div class="score-box" id="score-ct">CT 0</div>
     </div>
-    <div id="round-info">Раунд 1 / 5</div>
-
-    <div id="bomb-compass">
-        <span id="compass-arrow">▲</span>
-        <span id="compass-distance">0м</span>
-    </div>
 
     <div id="bomb-hud">
         <div id="bomb-timer">40</div>
-        <div id="bomb-status">💣 Бомба заложена!</div>
+        <div id="bomb-status">💣 Заложена</div>
         <div id="defuse-bar"><div id="defuse-bar-fill"></div></div>
     </div>
 
     <div id="hp-hud">HP: 100</div>
 
-    <div id="joystick">
-        <div id="joystick-knob"></div>
-    </div>
-
+    <div id="joystick"><div id="joystick-knob"></div></div>
     <div id="abilities">
         <div class="ability" id="ability-1">💣</div>
         <div class="ability" id="ability-2">🔨</div>
