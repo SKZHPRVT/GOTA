@@ -28,7 +28,7 @@ function addOutline(mesh, thickness = 0.08) {
 }
 
 export class Enemy {
-    constructor(scene, team = 'CT', position = null) {
+    constructor(scene, team = 'CT', position = { x: 10, z: 24 }) {
         this.scene = scene;
         this.team = team;
         this.hp = 100;
@@ -39,7 +39,6 @@ export class Enemy {
 
         this.mesh = new THREE.Group();
 
-        // Тело
         const bodyGeo = new THREE.BoxGeometry(0.9, 0.9, 0.7);
         const bodyMat = toonMat(0xCC3333);
         this.body = new THREE.Mesh(bodyGeo, bodyMat);
@@ -48,7 +47,6 @@ export class Enemy {
         addOutline(this.body);
         this.mesh.add(this.body);
 
-        // Голова
         const headGeo = new THREE.SphereGeometry(0.6, 16, 16);
         const headMat = toonMat(0xFFDDA0);
         this.head = new THREE.Mesh(headGeo, headMat);
@@ -57,7 +55,6 @@ export class Enemy {
         addOutline(this.head, 0.06);
         this.mesh.add(this.head);
 
-        // Нос
         const noseGeo = new THREE.BoxGeometry(0.15, 0.15, 0.35);
         const noseMat = toonMat(0x660000);
         this.nose = new THREE.Mesh(noseGeo, noseMat);
@@ -65,7 +62,6 @@ export class Enemy {
         addOutline(this.nose, 0.15);
         this.mesh.add(this.nose);
 
-        // Глаза
         const eyeGeo = new THREE.SphereGeometry(0.08, 8, 8);
         const eyeMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
         const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
@@ -75,7 +71,6 @@ export class Enemy {
         eyeR.position.set(0.18, 1.4, -0.55);
         this.mesh.add(eyeR);
 
-        // Ноги
         const legGeo = new THREE.BoxGeometry(0.25, 0.4, 0.25);
         const legMat = toonMat(0x222222);
         this.legL = new THREE.Mesh(legGeo, legMat);
@@ -87,7 +82,6 @@ export class Enemy {
         addOutline(this.legR, 0.12);
         this.mesh.add(this.legR);
 
-        // HP-бар
         const hpBarBg = new THREE.Mesh(
             new THREE.PlaneGeometry(1.2, 0.15),
             new THREE.MeshBasicMaterial({ color: 0x000000 })
@@ -103,20 +97,13 @@ export class Enemy {
         this.hpBar.position.z = 0.01;
         this.mesh.add(this.hpBar);
 
-        // Позиция
-        if (position) {
-            this.mesh.position.copy(position);
-        } else {
-            // Спавн CT (внизу справа)
-            const CELL = 4;
-            this.mesh.position.set((14 - 7.5) * CELL, 0, (13.5 - 7.5) * CELL);
-        }
+        this.mesh.position.set(position.x, 0, position.z);
         scene.add(this.mesh);
 
         this.animTime = 0;
     }
 
-    update(dt, playerPos) {
+    update(dt, playerPos, collision = null) {
         if (!this.alive) return null;
 
         const hpPercent = Math.max(0, this.hp / this.maxHp);
@@ -138,9 +125,15 @@ export class Enemy {
         }
 
         if (distToPlayer > ATTACK_RANGE * 0.7) {
-            const moveDir = toPlayer.clone().normalize();
-            moveDir.multiplyScalar(this.speed * dt);
-            this.mesh.position.add(moveDir);
+            const moveDir = toPlayer.clone().normalize().multiplyScalar(this.speed * dt);
+            if (collision) {
+                const cur = this.mesh.position;
+                const res = collision.resolveMove(cur.x, cur.z, moveDir.x, moveDir.z);
+                this.mesh.position.x = res.x;
+                this.mesh.position.z = res.z;
+            } else {
+                this.mesh.position.add(moveDir);
+            }
 
             const angle = Math.atan2(toPlayer.x, toPlayer.z);
             this.mesh.rotation.y = angle + Math.PI;
