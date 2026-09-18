@@ -44,9 +44,9 @@ export class Enemy {
         this.goalPos = { x: position.x, z: position.z };
         this.isFrozen = true;
 
-        // Для обхода стен
         this.stuckTimer = 0;
-        this.sideStepDir = 0; // -1 или 1, куда обходить
+        this.sideStepDir = 0;
+        this.sideStepTimer = 0;
 
         const isT = team === 'T';
         const colors = isT
@@ -164,13 +164,8 @@ export class Enemy {
         this.animTime = 0;
     }
 
-    setGoal(x, z) {
-        this.goalPos = { x, z };
-    }
-
-    unfreeze() {
-        this.isFrozen = false;
-    }
+    setGoal(x, z) { this.goalPos = { x, z }; }
+    unfreeze() { this.isFrozen = false; }
 
     findTarget(enemyList, playerPos, playerAlive) {
         let nearest = null;
@@ -265,50 +260,87 @@ export class Enemy {
         const prevX = this.mesh.position.x;
         const prevZ = this.mesh.position.z;
 
-        const moveDir = to.clone().normalize().multiplyScalar(this.speed * dt);
+        // Если идём боком
+        if (this.sideStepTimer > 0) {
+            this.sideStepTimer -= dt;
 
-        if (collision) {
-            const res = collision.resolveMove(prevX, prevZ, moveDir.x, moveDir.z);
+            const targetAngle = Math.atan2(to.x, to.z);
+            const sideAngle = targetAngle + this.sideStepDir * Math.PI / 2;
+
+            const sideDir = new THREE.Vector3(
+                Math.sin(sideAngle), 0, Math.cos(sideAngle)
+            ).multiplyScalar(this.speed * dt);
+
+            const res = collision
+                ? collision.resolveMove(prevX, prevZ, sideDir.x, sideDir.z)
+                : { x: prevX + sideDir.x, z: prevZ + sideDir.z };
+
             this.mesh.position.x = res.x;
             this.mesh.position.z = res.z;
-        } else {
-            this.mesh.position.add(moveDir);
-        }
 
-        // Застряли ли?
-        const movedX = this.mesh.position.x - prevX;
-        const movedZ = this.mesh.position.z - prevZ;
-        const movedDist = Math.hypot(movedX, movedZ);
+            const actualX = this.mesh.position.x - prevX;
+            const actualZ = this.mesh.position.z - prevZ;
 
-        if (collision && movedDist < 0.01) {
-            // Обход стены — пробуем боковые направления
-            const targetAngle = Math.atan2(to.x, to.z);
-            const tryAngles = [
-                targetAngle + Math.PI / 2,
-                targetAngle - Math.PI / 2,
-                targetAngle + Math.PI / 4,
-                targetAngle - Math.PI / 4,
-                targetAngle + Math.PI,
-            ];
-
-            for (const tryAngle of tryAngles) {
-                const tryDirX = Math.sin(tryAngle) * this.speed * dt;
-                const tryDirZ = Math.cos(tryAngle) * this.speed * dt;
-                const tryX = prevX + tryDirX;
-                const tryZ = prevZ + tryDirZ;
-
-                if (collision.canMoveTo(tryX, tryZ)) {
-                    this.mesh.position.x = tryX;
-                    this.mesh.position.z = tryZ;
-                    break;
-                }
+            if (Math.hypot(actualX, actualZ) > 0.001) {
+                const moveAngle = Math.atan2(actualX, actualZ);
+                this.mesh.rotation.y = moveAngle + Math.PI;
             }
+
+            this.animTime += dt * 10;
+            const swing = Math.sin(this.animTime) * 0.5;
+            this.legL.rotation.x = swing;
+            this.legR.rotation.x = -swing;
+            this.armL.rotation.x = -swing * 0.7;
+            this.armR.rotation.x = swing * 0.7;
+            return null;
         }
 
-        // Поворот по фактическому движению
+        // Обычное движение к цели
+        const moveDir = to.clone().normalize().multiplyScalar(this.speed * dt);
+
+        let res;
+        if (collision) {
+            res = collision.resolveMove(prevX, prevZ, moveDir.x, moveDir.z);
+        } else {
+            res = { x: prevX + moveDir.x, z: prevZ + moveDir.z };
+        }
+        this.mesh.position.x = res.x;
+        this.mesh.position.z = res.z;
+
         const actualX = this.mesh.position.x - prevX;
         const actualZ = this.mesh.position.z - prevZ;
-        if (Math.hypot(actualX, actualZ) > 0.001) {
+        const movedDist = Math.hypot(actualX, actualZ);
+        const expectedDist = Math.hypot(moveDir.x, moveDir.z);
+
+        if (movedDist < expectedDist * 0.5) {
+            this.stuckTimer += dt;
+
+            if (this.stuckTimer > 0.15 && this.sideStepDir === 0) {
+                const targetAngle = Math.atan2(to.x, to.z);
+                const leftAngle = targetAngle + Math.PI / 2;
+                const rightAngle = targetAngle - Math.PI / 2;
+
+                const leftX = prevX + Math.sin(leftAngle) * 1.5;
+                const leftZ = prevZ + Math.cos(leftAngle) * 1.5;
+                const rightX = prevX + Math.sin(rightAngle) * 1.5;
+                const rightZ = prevZ + Math.cos(rightAngle) * 1.5;
+
+                const leftFree = !collision || collision.canMoveTo(leftX, leftZ);
+                const rightFree = !collision || collision.canMoveTo(rightX, rightZ);
+
+                if (leftFree) this.sideStepDir = 1;
+                else if (rightFree) this.sideStepDir = -1;
+                else this.sideStepDir = 1;
+
+                this.sideStepTimer = 1.5;
+                this.stuckTimer = 0;
+            }
+        } else {
+            this.stuckTimer = 0;
+            if (this.sideStepTimer <= 0) this.sideStepDir = 0;
+        }
+
+        if (movedDist > 0.001) {
             const moveAngle = Math.atan2(actualX, actualZ);
             this.mesh.rotation.y = moveAngle + Math.PI;
         } else {

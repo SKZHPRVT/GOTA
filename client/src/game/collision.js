@@ -1,7 +1,7 @@
 export class CollisionSystem {
     constructor(colliders) {
         this.colliders = colliders;
-        this.playerRadius = 1.0;   // было 0.4 — увеличили под ×4 персонажей
+        this.playerRadius = 0.6;   // было 1.0 — уменьшили чтобы не залипали
     }
 
     canMoveTo(x, z) {
@@ -19,22 +19,43 @@ export class CollisionSystem {
         return true;
     }
 
-    resolveMove(currentX, currentZ, deltaX, deltaZ) {
-        let newX = currentX + deltaX;
-        let newZ = currentZ + deltaZ;
+    // НОВОЕ: раздельные проверки по X и Z — чтобы скользить по стенам
+    canMoveToX(x, z) {
+        const r = this.playerRadius;
+        for (const c of this.colliders) {
+            if (!c) continue;
+            const closestX = Math.max(c.minX, Math.min(x, c.maxX));
+            const closestZ = Math.max(c.minZ, Math.min(z, c.maxZ));
+            const dx = x - closestX;
+            const dz = z - closestZ;
+            if (dx * dx + dz * dz < r * r) return false;
+        }
+        return true;
+    }
 
-        if (!this.canMoveTo(newX, newZ)) {
-            if (this.canMoveTo(newX, currentZ)) {
-                newZ = currentZ;
-            } else if (this.canMoveTo(currentX, newZ)) {
-                newX = currentX;
-            } else {
-                newX = currentX;
-                newZ = currentZ;
-            }
+    resolveMove(currentX, currentZ, deltaX, deltaZ) {
+        let newX = currentX;
+        let newZ = currentZ;
+
+        // Пробуем полный шаг
+        if (this.canMoveTo(currentX + deltaX, currentZ + deltaZ)) {
+            return { x: currentX + deltaX, z: currentZ + deltaZ };
         }
 
-        return { x: newX, z: newZ };
+        // Пробуем только по X
+        if (this.canMoveTo(currentX + deltaX, currentZ)) {
+            newX = currentX + deltaX;
+            return { x: newX, z: currentZ };
+        }
+
+        // Пробуем только по Z
+        if (this.canMoveTo(currentX, currentZ + deltaZ)) {
+            newZ = currentZ + deltaZ;
+            return { x: currentX, z: newZ };
+        }
+
+        // Ничего не вышло — стоим
+        return { x: currentX, z: currentZ };
     }
 
     hasLineOfSight(from, to) {
