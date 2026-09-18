@@ -19,17 +19,17 @@ const SOUNDS = {
 };
 
 const DEFAULT_VOLUMES = {
-    shoot:          0.18,
-    footstep:       0.10,
-    freezeEnd:      0.75,
-    roundStart:     0.7,
-    roundMusic:     0.20,
+    shoot:          0.14,   // было 0.18 → -22%
+    footstep:       0.08,   // было 0.10
+    freezeEnd:      0.70,
+    roundStart:     0.65,
+    roundMusic:     0.15,   // было 0.20 → -25%
     winT:           0.75,
     winCT:          0.75,
-    bombPlaced:     0.85,
-    bombTick:       0.4,
+    bombPlaced:     1.00,   // было 0.85 → громче
+    bombTick:       0.90,   // было 0.4 → сильно громче
     bombDefused:    0.75,
-    c4Disarm:       0.6,
+    c4Disarm:       0.70,
     bombExplode:    0.85,
     grenadeThrow:   0.45,
     grenadeExplode: 0.75,
@@ -60,11 +60,10 @@ const MIN_INTERVAL = {
     default:  0
 };
 
-// Дистанции для пространственного звука
 const SPATIAL = {
-    maxDistance: 60,   // дальше — не играем
-    fullVolume:  30,   // ближе — полная громкость
-    minVolume:   0.15  // минимальный множитель (15% от базовой)
+    maxDistance: 60,
+    fullVolume:  30,
+    minVolume:   0.15
 };
 
 const cache = {};
@@ -162,7 +161,6 @@ export class AudioManager {
 
         const volume = (opts.volume ?? DEFAULT_VOLUMES[name] ?? 0.5) * this.masterVolume;
 
-        // Пропускаем, если громкость ниже порога (не слышно)
         if (volume < 0.005) return null;
 
         if (this.longSounds.includes(name)) {
@@ -216,17 +214,13 @@ export class AudioManager {
         }
     }
 
-    // === ПРОСТРАНСТВЕННЫЙ ЗВУК ВЫСТРЕЛА ===
     shootSpatial(distance) {
-        // Дальше maxDistance — вообще не играем
         if (distance > SPATIAL.maxDistance) return;
 
-        // Множитель громкости по дистанции
         let volMul;
         if (distance <= SPATIAL.fullVolume) {
             volMul = 1.0;
         } else {
-            // Линейное затухание от fullVolume до maxDistance
             const t = (distance - SPATIAL.fullVolume) / (SPATIAL.maxDistance - SPATIAL.fullVolume);
             volMul = 1.0 - t * (1.0 - SPATIAL.minVolume);
         }
@@ -239,7 +233,6 @@ export class AudioManager {
         });
     }
 
-    // Стандартный (без дистанции) — для игрока в упор
     shoot() {
         this.play('shoot', { rate: 0.95 + Math.random() * 0.1 });
     }
