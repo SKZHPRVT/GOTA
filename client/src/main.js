@@ -6,6 +6,7 @@ import { Joystick } from './ui/joystick.js';
 import { CombatSystem } from './game/combat.js';
 import { CollisionSystem } from './game/collision.js';
 import { RoundManager } from './game/round.js';
+import { AudioManager } from './game/audio.js';
 
 // === Telegram базовое ===
 const tg = window.Telegram?.WebApp;
@@ -20,7 +21,15 @@ if (tg) {
     } catch (e) {}
 }
 
-// === Debug (с ?debug=1) ===
+// === AUDIO ===
+const audio = new AudioManager();
+audio.preloadAll();
+
+// Разблокировка на iOS — при первом тапе
+document.addEventListener('touchstart', () => audio.unlock(), { once: true });
+document.addEventListener('click', () => audio.unlock(), { once: true });
+
+// === Debug ===
 const showDebug = new URLSearchParams(window.location.search).get('debug') === '1';
 
 // === Сцена ===
@@ -51,17 +60,7 @@ if (showDebug) {
     `;
     document.body.appendChild(debugEl);
     setInterval(() => {
-        const lines = [
-            `win: ${window.innerWidth}×${window.innerHeight}`,
-            `orient: ${screen.orientation?.type || '?'}`,
-            `angle: ${screen.orientation?.angle ?? '?'}`
-        ];
-        if (tg) {
-            lines.push(`tg v${tg.version} | ${tg.platform}`);
-            lines.push(`fullscr: ${tg.isFullscreen}`);
-            lines.push(`orientLock: ${tg.isOrientationLocked}`);
-        }
-        debugEl.textContent = lines.join('\n');
+        debugEl.textContent = `win: ${window.innerWidth}×${window.innerHeight}\norient: ${screen.orientation?.type || '?'}`;
     }, 1000);
 }
 
@@ -110,17 +109,31 @@ const round = new RoundManager({
     onRoundStart: (n) => {
         showBanner(`Раунд ${n}`, '#FFD24A', 1.5);
         resetRound();
+        // Звуки старта раунда
+        audio.freezeEnd();
+        setTimeout(() => {
+            audio.roundStart();
+            audio.startRoundMusic();
+        }, 800);
     },
     onRoundEnd: (winner, reason, sT, sCT) => {
+        audio.stopRoundMusic();
+        audio.stopBombTick();
         const color = winner === 'T' ? '#FFD24A' : '#5CA8FF';
         const text = winner === 'T' ? 'Победа T!' : 'Победа CT!';
         showBanner(text, color, 2);
         updateScore(sT, sCT);
+        // Звук победы
+        if (winner === 'T') audio.winT();
+        else audio.winCT();
     },
     onMatchEnd: (winner, sT, sCT) => {
+        audio.stopRoundMusic();
         const text = winner === 'T' ? 'МАТЧ: T ПОБЕДА!' : 'МАТЧ: CT ПОБЕДА!';
         const color = winner === 'T' ? '#FFD24A' : '#5CA8FF';
         showBanner(text, color, 999);
+        if (winner === 'T') audio.winT();
+        else audio.winCT();
     }
 });
 
@@ -202,6 +215,7 @@ function resetRound() {
 
 function tryPlaceBomb() {
     if (!player.alive || !round.isPlaying()) return;
+    audio.uiClick();
     const px = player.mesh.position.x;
     const pz = player.mesh.position.z;
     let nearPlant = null;
@@ -210,14 +224,18 @@ function tryPlaceBomb() {
         if (d < 10) { nearPlant = p; break; }
     }
     if (!nearPlant) {
+        audio.uiError();
         showBanner('Не на плэнте!', '#FF6666', 1);
         return;
     }
+    audio.bombPlaced();
+    audio.startBombTick();
     showBanner(`💣 Бомба на ${nearPlant.id}!`, '#FFD24A', 2);
 }
 
 function tryHammer() {
     if (!player.alive) return;
+    audio.uiClick();
     showBanner('🔨 Удар!', '#FFFFFF', 0.5);
 }
 
@@ -241,7 +259,12 @@ function animate() {
     const collisionRef = USE_COLLISION ? collision : null;
     const playing = round.isPlaying();
 
+    const prevPos = player.mesh.position.clone();
     if (playing) player.update(dt, joystick.direction, collisionRef);
+
+    // Шаги — если игрок сдвинулся
+    const moved = prevPos.distanceTo(player.mesh.position) > 0.05;
+    if (moved && playing) audio.footstep();
 
     const allBots = [...tBots, ...ctBots];
 
@@ -257,6 +280,7 @@ function animate() {
                 if (player.attackTimer <= 0) {
                     player.attackTimer = player.attackCooldown;
                     combat.shoot(fromPos, target, 'T');
+                    audio.shoot();
                 }
             }
         }
@@ -270,6 +294,7 @@ function animate() {
             if (action?.type === 'shoot') {
                 const fakeTarget = { mesh: { position: action.from.clone().add(action.direction.clone().multiplyScalar(10)) } };
                 combat.shoot(action.from.clone().sub(new THREE.Vector3(0, 1.2, 0)), fakeTarget, 'T');
+                audio.shoot();
             }
         }
         for (const bot of ctBots) {
@@ -278,6 +303,7 @@ function animate() {
             if (action?.type === 'shoot') {
                 const fakeTarget = { mesh: { position: action.from.clone().add(action.direction.clone().multiplyScalar(10)) } };
                 combat.shoot(action.from.clone().sub(new THREE.Vector3(0, 1.2, 0)), fakeTarget, 'CT');
+                audio.shoot();
             }
         }
     }
@@ -311,28 +337,21 @@ function animate() {
     renderer.render(scene, camera);
 }
 
-// === Resize — пересчёт под новую ориентацию ===
 function onResize() {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    camera.aspect = w / h;
+    camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
-    renderer.setSize(w, h);
-    console.log('[resize]', w, '×', h, '| orient:', screen.orientation?.type || '?', '| angle:', screen.orientation?.angle ?? '?');
+    renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
 window.addEventListener('resize', onResize);
 window.addEventListener('orientationchange', () => {
-    // iOS не сразу обновляет размеры — вызываем несколько раз
     setTimeout(onResize, 100);
     setTimeout(onResize, 300);
     setTimeout(onResize, 600);
 });
 
 if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', () => {
-        setTimeout(onResize, 50);
-    });
+    window.visualViewport.addEventListener('resize', () => setTimeout(onResize, 50));
 }
 
 window.addEventListener('keydown', (e) => {
