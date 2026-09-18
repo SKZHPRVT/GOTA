@@ -104,6 +104,11 @@ let bombPlanted = false;
 let bombExploded = false;
 let bombDefused = false;
 
+// Фризтайм
+const FREEZE_TIME = 3.0;
+let freezeTimer = 0;
+let isFrozen = true;
+
 const round = new RoundManager({
     roundsToWin: 5,
     roundDuration: 60,
@@ -112,10 +117,28 @@ const round = new RoundManager({
         showBanner(`Раунд ${n}`, '#FFD24A', 1.5);
         resetRound();
         audio.freezeEnd();
+        // Фриз 3 секунды, потом все бегут
+        freezeTimer = FREEZE_TIME;
+        isFrozen = true;
         setTimeout(() => {
+            isFrozen = false;
+            // T-боты получают цели — 2 на A, 2 на B
+            const tA = tBots.filter(b => b.role === 'A');
+            const tB = tBots.filter(b => b.role === 'B');
+            const plantA = plants.find(p => p.id === 'A');
+            const plantB = plants.find(p => p.id === 'B');
+            tA.forEach((bot, i) => {
+                if (plantA) bot.setGoal(plantA.x + (i - 0.5) * 8, plantA.z);
+            });
+            tB.forEach((bot, i) => {
+                if (plantB) bot.setGoal(plantB.x + (i - 0.5) * 8, plantB.z);
+            });
+            // Все боты — снимаем фриз
+            tBots.forEach(b => b.unfreeze());
+            ctBots.forEach(b => b.unfreeze());
             audio.roundStart();
             audio.startRoundMusic();
-        }, 800);
+        }, FREEZE_TIME * 1000);
     },
     onRoundEnd: (winner, reason, sT, sCT) => {
         audio.stopRoundMusic();
@@ -242,11 +265,13 @@ function createTeams() {
     tBots = [];
     ctBots = [];
 
+    // === T-боты: 2 на A, 2 на B ===
+    // Роли по плэнтам, стартовая позиция — у спавна T, goal — плэнт A/B
     const tRoles = [
-        { role: 'mid', offset: { x: -15, z: -1 } },
-        { role: 'A',   offset: { x: -5,  z: 1 } },
-        { role: 'A',   offset: { x: 5,   z: -1 } },
-        { role: 'B',   offset: { x: 15,  z: 1 } }
+        { role: 'A', offset: { x: -15, z: -1 } },
+        { role: 'A', offset: { x: -5,  z: 1 } },
+        { role: 'B', offset: { x: 5,   z: -1 } },
+        { role: 'B', offset: { x: 15,  z: 1 } }
     ];
     for (const r of tRoles) {
         tBots.push(new Enemy(scene, 'T', {
@@ -255,6 +280,7 @@ function createTeams() {
         }, r.role));
     }
 
+    // === CT-боты: 1 mid, 2 A, 2 B ===
     const ctRoles = [
         { role: 'mid', pos: { x: 0,    z: -20 } },
         { role: 'A',   pos: { x: 60,   z: -60 } },
@@ -295,6 +321,11 @@ function tryPlaceBomb() {
         showBanner('Бомба уже заложена!', '#FF6666', 1.5);
         return;
     }
+    // Бомбу нельзя ставить во фризтайме
+    if (isFrozen) {
+        showBanner('Фризтайм!', '#FF6666', 1);
+        return;
+    }
 
     const px = player.mesh.position.x;
     const pz = player.mesh.position.z;
@@ -333,6 +364,14 @@ function tryPlaceBomb() {
     audio.startBombTick();
     showBanner(`💣 Бомба на ${nearestPlant.id}!`, '#FFD24A', 2);
     showBombHud();
+
+    // После закладки — все боты идут к бомбе
+    tBots.forEach(b => {
+        if (b.alive) b.setGoal(nearestPlant.x, nearestPlant.z);
+    });
+    ctBots.forEach(b => {
+        if (b.alive) b.setGoal(nearestPlant.x, nearestPlant.z);
+    });
 }
 
 function tryHammer() {
@@ -371,7 +410,14 @@ function animate() {
 
     const prevPos = player.mesh.position.clone();
     const prevHp = player.hp;
-    if (playing) player.update(dt, joystick.direction, collisionRef);
+
+    // Игрок двигается только вне фризтайма
+    if (playing && !isFrozen) {
+        player.update(dt, joystick.direction, collisionRef);
+    } else if (playing) {
+        // Во фризтайме — анимация покоя
+        player.update(dt, { x: 0, y: 0 }, collisionRef);
+    }
 
     if (player.hp < prevHp) flashDamage();
 
@@ -387,7 +433,7 @@ function animate() {
 
     const allBots = [...tBots, ...ctBots];
 
-    if (player.alive && playing) {
+    if (player.alive && playing && !isFrozen) {
         const enemiesForPlayer = ctBots.filter(b => b.alive);
         const target = combat.findNearestTarget(player.mesh.position, enemiesForPlayer, player.attackRange);
         if (target && collision) {
@@ -451,7 +497,7 @@ function animate() {
     hpEl.textContent = `HP: ${Math.round(player.hp)}`;
     roundTimerEl.textContent = Math.ceil(round.roundTimer);
 
-    if (player.alive && playing && !bombPlanted) {
+    if (player.alive && playing && !bombPlanted && !isFrozen) {
         const px = player.mesh.position.x;
         const pz = player.mesh.position.z;
         let nearPlant = false;
