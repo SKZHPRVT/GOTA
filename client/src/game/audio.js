@@ -1,4 +1,4 @@
-// ============ AUDIO MANAGER v3 — spatial sound ============
+// ============ AUDIO MANAGER v5 — death fix ============
 
 const SOUNDS = {
     shoot:          'sounds/ak47-1.mp3',
@@ -15,7 +15,8 @@ const SOUNDS = {
     bombExplode:    'sounds/c4_explode1.mp3',
     grenadeThrow:   'sounds/ct_fireinhole.mp3',
     grenadeExplode: 'sounds/explode3.mp3',
-    flashExplode:   'sounds/flashbang_explode1.mp3'
+    flashExplode:   'sounds/flashbang_explode1.mp3',
+    death:          'sounds/death3.mp3'
 };
 
 const DEFAULT_VOLUMES = {
@@ -33,13 +34,15 @@ const DEFAULT_VOLUMES = {
     bombExplode:    0.85,
     grenadeThrow:   0.45,
     grenadeExplode: 0.75,
-    flashExplode:   0.75
+    flashExplode:   0.75,
+    death:          1.00
 };
 
 const MAX_CONCURRENT = {
     shoot: 3, footstep: 1, freezeEnd: 1, roundStart: 1, roundMusic: 1,
     winT: 1, winCT: 1, bombPlaced: 1, bombTick: 1, bombDefused: 1,
-    c4Disarm: 1, bombExplode: 1, grenadeThrow: 2, grenadeExplode: 2, flashExplode: 1
+    c4Disarm: 1, bombExplode: 1, grenadeThrow: 2, grenadeExplode: 2,
+    flashExplode: 1, death: 3
 };
 
 const MIN_INTERVAL = {
@@ -144,10 +147,7 @@ export class AudioManager {
             console.warn('[audio] no cache for', name);
             return null;
         }
-
-        if (!opts.force && !this.canPlay(name)) {
-            return null;
-        }
+        if (!opts.force && !this.canPlay(name)) return null;
 
         const volume = (opts.volume ?? DEFAULT_VOLUMES[name] ?? 0.5) * this.masterVolume;
         if (volume < 0.005) return null;
@@ -159,7 +159,6 @@ export class AudioManager {
             const sound = this.currentLong[name];
             sound.volume = Math.min(1, Math.max(0, volume));
             sound.loop = !!opts.loop;
-
             const p = sound.play();
             if (p && p.catch) p.catch(() => {});
             this.lastPlay[name] = performance.now() / 1000;
@@ -208,10 +207,7 @@ export class AudioManager {
             const t = (distance - SPATIAL.fullVolume) / (SPATIAL.maxDistance - SPATIAL.fullVolume);
             volMul = 1.0 - t * (1.0 - SPATIAL.minVolume);
         }
-        this.play('shoot', {
-            rate: 0.95 + Math.random() * 0.1,
-            volume: DEFAULT_VOLUMES.shoot * volMul
-        });
+        this.play('shoot', { rate: 0.95 + Math.random() * 0.1, volume: DEFAULT_VOLUMES.shoot * volMul });
     }
 
     shoot() { this.play('shoot', { rate: 0.95 + Math.random() * 0.1 }); }
@@ -222,21 +218,25 @@ export class AudioManager {
     stopRoundMusic() { this.stop('roundMusic'); }
     winT() { this.play('winT'); }
     winCT() { this.play('winCT'); }
-
     bombPlaced() { this.play('bombPlaced', { force: true }); }
-
     startBombTick() { this.play('bombTick', { loop: true, force: true }); }
     stopBombTick() { this.stop('bombTick'); }
     bombDefused() { this.play('bombDefused', { force: true }); }
     startDisarm() { this.play('c4Disarm', { loop: true, force: true }); }
     stopDisarm() { this.stop('c4Disarm'); }
     bombExplode() { this.play('bombExplode', { force: true }); }
-
     grenadeThrow() { this.play('grenadeThrow'); }
     grenadeExplode() { this.play('grenadeExplode'); }
     flashExplode() { this.play('flashExplode'); }
-    uiClick() { /* no ui sound */ }
-    uiError() { /* no ui sound */ }
+
+    // Смерть — всегда force, чтобы точно играла
+    death() {
+        this.stopRoundMusic();
+        this.play('death', { force: true });
+    }
+
+    uiClick() {}
+    uiError() {}
 
     setMasterVolume(v) { this.masterVolume = Math.min(1, Math.max(0, v)); }
     toggle() {

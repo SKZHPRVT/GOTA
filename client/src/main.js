@@ -113,6 +113,7 @@ const FREEZE_TIME = 3.0;
 let isFrozen = true;
 
 let deathModalShown = false;
+let deathHandled = false;    // true = звук уже проигран (не повторять)
 let spectateTarget = null;
 let occupiedBot = null;
 
@@ -126,13 +127,14 @@ const round = new RoundManager({
         audio.freezeEnd();
         isFrozen = true;
         deathModalShown = false;
+        deathHandled = false;
         hideDeathModal();
         hideSpectateIndicator();
 
         setTimeout(() => {
             isFrozen = false;
-            player.isFrozen = false;   // разморозить игрока
-            // T-боты идут на A/B
+            player.isFrozen = false;
+
             const plantA = plants.find(p => p.id === 'A');
             const plantB = plants.find(p => p.id === 'B');
             const tA = tBots.filter(b => b.role === 'A');
@@ -163,7 +165,8 @@ const round = new RoundManager({
         if (winner === 'T') audio.winT();
         else audio.winCT();
         hideBombHud();
-        // НЕ скрываем death modal — пусть игрок видит и жмёт кнопки
+        hideDeathModal();
+        hideSpectateIndicator();
     },
     onMatchEnd: (winner, sT, sCT) => {
         audio.stopRoundMusic();
@@ -172,6 +175,7 @@ const round = new RoundManager({
         showBanner(text, color, 999);
         hideBombHud();
         hideDeathModal();
+        hideSpectateIndicator();
     }
 });
 
@@ -236,7 +240,6 @@ deathTakeoverBtn.addEventListener('click', () => {
     console.log('[death] takeover mode');
     hideDeathModal();
 
-    // Ищем живого T-бота, ближайшего к игроку
     let nearestBot = null;
     let nearestDist = Infinity;
     for (const b of tBots) {
@@ -503,13 +506,26 @@ function animate() {
 
     if (player.hp < prevHp) flashDamage();
 
-    // Игрок умер — модалка и звук. Показываем ВСЕГДА, даже если раунд закончился
-    if (!player.alive && !deathModalShown) {
-        deathModalShown = true;
+    // ===== СМЕРТЬ ИГРОКА =====
+    // Звук играем ОДИН раз
+    if (!player.alive && !deathHandled) {
+        deathHandled = true;
+        console.log('[death] player died — playing death sound');
         audio.death();
-        setTimeout(() => {
-            showDeathModal();
-        }, 500);
+    }
+
+    // Модалку показываем ТОЛЬКО если раунд идёт И есть живые T-боты
+    if (!player.alive && !deathModalShown && playing) {
+        const anyAliveT = tBots.some(b => b.alive);
+        if (anyAliveT) {
+            deathModalShown = true;
+            setTimeout(() => {
+                // Перепроверяем перед показом
+                if (round.isPlaying() && tBots.some(b => b.alive)) {
+                    showDeathModal();
+                }
+            }, 600);
+        }
     }
 
     const moved = prevPos.distanceTo(player.mesh.position) > 0.05;
@@ -543,7 +559,7 @@ function animate() {
         }
     }
 
-    // Занятый бот тоже стреляет
+    // Занятый бот стреляет автоматически
     if (occupiedBot && occupiedBot.alive && playing) {
         const enemiesForBot = ctBots.filter(b => b.alive);
         const target = combat.findNearestTarget(occupiedBot.mesh.position, enemiesForBot, 20);
@@ -566,7 +582,7 @@ function animate() {
         const hasLOS = collision ? (a, b) => collision.hasLineOfSight(a, b) : () => true;
         for (const bot of tBots) {
             if (!bot.alive) continue;
-            if (bot === occupiedBot) continue;   // занятым управляет игрок
+            if (bot === occupiedBot) continue;
             const action = bot.update(dt, allBots, player.mesh.position, player.alive, collisionRef, hasLOS);
             if (action?.type === 'shoot') {
                 const fakeTarget = { mesh: { position: action.from.clone().add(action.direction.clone().multiplyScalar(10)) } };
