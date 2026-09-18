@@ -225,7 +225,7 @@ async function initGame() {
         tryHammer();
     });
 
-    camera.position.set(spawnT.x, 55, spawnT.z + 45);
+    camera.position.set(spawnT.x, 40, spawnT.z + 35);
 
     setLoadingProgress(100, 'Готово!');
 
@@ -340,7 +340,7 @@ function tryHammer() {
     showBanner('🔨 Удар!', '#FFFFFF', 0.5);
 }
 
-const cameraOffset = { y: 55, z: 45 };
+const cameraOffset = { y: 40, z: 35 };
 function updateCamera() {
     if (!player) return;
     const t = player.mesh.position;
