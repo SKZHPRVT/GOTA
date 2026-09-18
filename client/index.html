@@ -15,6 +15,8 @@
             var tg = window.Telegram && window.Telegram.WebApp;
             if (!tg) return;
 
+            console.log('[tg] version:', tg.version, 'platform:', tg.platform);
+
             try {
                 tg.ready();
                 tg.expand();
@@ -22,27 +24,50 @@
                 if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
                 if (tg.setHeaderColor) tg.setHeaderColor('#000000');
                 if (tg.setBackgroundColor) tg.setBackgroundColor('#C2B280');
-            } catch (e) { console.error('[tg-head]', e); }
+            } catch (e) { console.error('[tg init]', e); }
 
-            // Пытаемся лочить landscape, но не критично
-            var tryLock = function() {
-                if (tg.lockOrientation) {
-                    try { tg.lockOrientation('landscape'); } catch (e) {}
-                }
-            };
+            // ПРОБУЕМ: unlock → lock('landscape')
+            function trySetLandscape() {
+                try {
+                    if (tg.unlockOrientation) {
+                        tg.unlockOrientation();
+                        console.log('[tg] unlocked orientation');
+                    }
+                } catch (e) { console.warn('[tg] unlock failed', e); }
 
+                setTimeout(function() {
+                    try {
+                        if (tg.lockOrientation) {
+                            tg.lockOrientation('landscape');
+                            console.log('[tg] locked landscape. isOrientationLocked =', tg.isOrientationLocked);
+                        }
+                    } catch (e) { console.warn('[tg] lock failed', e); }
+                }, 150);
+            }
+
+            // Пробуем сразу
+            setTimeout(trySetLandscape, 500);
+
+            // Пробуем после fullscreen
             if (tg.onEvent) {
                 tg.onEvent('fullscreenChanged', function() {
-                    if (tg.isFullscreen) tryLock();
+                    console.log('[tg] fullscreenChanged:', tg.isFullscreen);
+                    if (tg.isFullscreen) trySetLandscape();
+                });
+                tg.onEvent('fullscreenFailed', function(e) {
+                    console.error('[tg] fullscreenFailed:', e);
+                    trySetLandscape();
                 });
             }
-            setTimeout(function() {
-                if (tg.isFullscreen) tryLock();
-            }, 500);
+
+            // Пробуем по первому тапу
             document.addEventListener('touchstart', function once() {
-                tryLock();
+                trySetLandscape();
                 document.removeEventListener('touchstart', once);
             }, { once: true });
+
+            // Пробуем ещё раз через 2 секунды
+            setTimeout(trySetLandscape, 2000);
         })();
     </script>
 
@@ -50,10 +75,6 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         :root {
-            --safe-top: var(--tg-safe-area-inset-top, 0px);
-            --safe-bottom: var(--tg-safe-area-inset-bottom, 0px);
-            --safe-left: var(--tg-safe-area-inset-left, 0px);
-            --safe-right: var(--tg-safe-area-inset-right, 0px);
             --content-top: var(--tg-content-safe-area-inset-top, 0px);
             --content-bottom: var(--tg-content-safe-area-inset-bottom, 0px);
             --content-left: var(--tg-content-safe-area-inset-left, 0px);
@@ -179,26 +200,9 @@
             text-align: center;
             pointer-events: none;
         }
-        #rotate-hint {
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.85);
-            color: #fff;
-            display: none;
-            justify-content: center; align-items: center;
-            flex-direction: column;
-            font-size: 22px; z-index: 100;
-            text-align: center; padding: 20px;
-            pointer-events: none;
-        }
     </style>
 </head>
 <body>
-    <div id="rotate-hint">
-        <div style="font-size:64px;margin-bottom:20px;">📱</div>
-        <div>Поверни телефон горизонтально</div>
-    </div>
-
     <div id="top-hud">
         <span id="score-t">T 0</span>
         <span id="round-timer">60</span>
