@@ -139,6 +139,7 @@ const round = new RoundManager({
 
         setTimeout(() => {
             isFrozen = false;
+            player.isFrozen = false;
             // T-боты идут на A/B
             const plantA = plants.find(p => p.id === 'A');
             const plantB = plants.find(p => p.id === 'B');
@@ -495,6 +496,7 @@ function animate() {
     // Занятый бот — управляем им через джойстик
     if (occupiedBot && occupiedBot.alive && playing) {
         occupiedBot.isFrozen = false;
+            player.isFrozen = false;
         if (joystick.direction.x || joystick.direction.y) {
             const moveDir = new THREE.Vector3(joystick.direction.x, 0, joystick.direction.y);
             if (moveDir.length() > 0.15) {
