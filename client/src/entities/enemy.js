@@ -44,6 +44,10 @@ export class Enemy {
         this.goalPos = { x: position.x, z: position.z };
         this.isFrozen = true;
 
+        // Для обхода стен
+        this.stuckTimer = 0;
+        this.sideStepDir = 0; // -1 или 1, куда обходить
+
         const isT = team === 'T';
         const colors = isT
             ? { head: 0xE8C88A, body: 0x8B6F4A, arms: 0x8B6F4A, legs: 0x5A4732, gun: 0x2A2A2A, accent: 0xAA0000 }
@@ -258,19 +262,59 @@ export class Enemy {
         const dist = to.length();
         if (dist < 0.5) return null;
 
+        const prevX = this.mesh.position.x;
+        const prevZ = this.mesh.position.z;
+
         const moveDir = to.clone().normalize().multiplyScalar(this.speed * dt);
 
         if (collision) {
-            const cur = this.mesh.position;
-            const res = collision.resolveMove(cur.x, cur.z, moveDir.x, moveDir.z);
+            const res = collision.resolveMove(prevX, prevZ, moveDir.x, moveDir.z);
             this.mesh.position.x = res.x;
             this.mesh.position.z = res.z;
         } else {
             this.mesh.position.add(moveDir);
         }
 
-        const angle = Math.atan2(to.x, to.z);
-        this.mesh.rotation.y = angle + Math.PI;
+        // Застряли ли?
+        const movedX = this.mesh.position.x - prevX;
+        const movedZ = this.mesh.position.z - prevZ;
+        const movedDist = Math.hypot(movedX, movedZ);
+
+        if (collision && movedDist < 0.01) {
+            // Обход стены — пробуем боковые направления
+            const targetAngle = Math.atan2(to.x, to.z);
+            const tryAngles = [
+                targetAngle + Math.PI / 2,
+                targetAngle - Math.PI / 2,
+                targetAngle + Math.PI / 4,
+                targetAngle - Math.PI / 4,
+                targetAngle + Math.PI,
+            ];
+
+            for (const tryAngle of tryAngles) {
+                const tryDirX = Math.sin(tryAngle) * this.speed * dt;
+                const tryDirZ = Math.cos(tryAngle) * this.speed * dt;
+                const tryX = prevX + tryDirX;
+                const tryZ = prevZ + tryDirZ;
+
+                if (collision.canMoveTo(tryX, tryZ)) {
+                    this.mesh.position.x = tryX;
+                    this.mesh.position.z = tryZ;
+                    break;
+                }
+            }
+        }
+
+        // Поворот по фактическому движению
+        const actualX = this.mesh.position.x - prevX;
+        const actualZ = this.mesh.position.z - prevZ;
+        if (Math.hypot(actualX, actualZ) > 0.001) {
+            const moveAngle = Math.atan2(actualX, actualZ);
+            this.mesh.rotation.y = moveAngle + Math.PI;
+        } else {
+            const angle = Math.atan2(to.x, to.z);
+            this.mesh.rotation.y = angle + Math.PI;
+        }
 
         this.animTime += dt * 10;
         const swing = Math.sin(this.animTime) * 0.5;
@@ -288,7 +332,7 @@ export class Enemy {
         if (this.hp <= 0) {
             this.hp = 0;
             this.die();
-            return true;   // умер
+            return true;
         }
         return false;
     }

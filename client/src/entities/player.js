@@ -40,6 +40,9 @@ export class Player {
         this.attackRange = ATTACK_RANGE;
         this.attackCooldown = ATTACK_COOLDOWN;
 
+        this.isFrozen = true;
+        this.isAiming = false;
+
         const isT = team === 'T';
         const colors = isT
             ? { head: 0xE8C88A, body: 0x8B6F4A, arms: 0x8B6F4A, legs: 0x5A4732, gun: 0x2A2A2A, accent: 0xAA0000 }
@@ -48,7 +51,6 @@ export class Player {
         this.mesh = new THREE.Group();
         this.mesh.scale.setScalar(SCALE);
 
-        // Ноги
         const legGeo = new THREE.CylinderGeometry(0.14, 0.14, 0.5, 8);
         const legMat = toonMat(colors.legs);
         this.legL = new THREE.Mesh(legGeo, legMat);
@@ -62,7 +64,6 @@ export class Player {
         addOutline(this.legR, 0.1);
         this.mesh.add(this.legR);
 
-        // Туловище
         const bodyGeo = new THREE.CylinderGeometry(0.32, 0.35, 0.7, 12);
         const bodyMat = toonMat(colors.body);
         this.body = new THREE.Mesh(bodyGeo, bodyMat);
@@ -80,7 +81,6 @@ export class Player {
             this.mesh.add(this.vest);
         }
 
-        // === ГОЛОВА — КУБ (большая квадратная) ===
         const headGeo = new THREE.BoxGeometry(0.85, 0.85, 0.85);
         const headMat = toonMat(colors.head);
         this.head = new THREE.Mesh(headGeo, headMat);
@@ -90,7 +90,6 @@ export class Player {
         this.mesh.add(this.head);
 
         if (!isT) {
-            // Шлем CT — шапка сверху
             const helmetGeo = new THREE.BoxGeometry(0.9, 0.35, 0.9);
             const helmetMat = toonMat(0x1A2A3A);
             this.helmet = new THREE.Mesh(helmetGeo, helmetMat);
@@ -100,7 +99,6 @@ export class Player {
         }
 
         if (isT) {
-            // Бандана T — полоска
             const bandGeo = new THREE.BoxGeometry(0.9, 0.15, 0.9);
             const bandMat = toonMat(colors.accent);
             this.bandana = new THREE.Mesh(bandGeo, bandMat);
@@ -109,7 +107,6 @@ export class Player {
             this.mesh.add(this.bandana);
         }
 
-        // Глаза
         const eyeGeo = new THREE.SphereGeometry(0.08, 6, 6);
         const eyeMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
         const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
@@ -119,7 +116,6 @@ export class Player {
         eyeR.position.set(0.22, 1.65, -0.43);
         this.mesh.add(eyeR);
 
-        // Руки
         const armGeo = new THREE.CylinderGeometry(0.09, 0.09, 0.55, 6);
         const armMat = toonMat(colors.arms);
         this.armL = new THREE.Mesh(armGeo, armMat);
@@ -135,7 +131,6 @@ export class Player {
         addOutline(this.armR, 0.1);
         this.mesh.add(this.armR);
 
-        // Оружие
         this.gun = new THREE.Group();
         const gunBody = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.9), toonMat(colors.gun));
         this.gun.add(gunBody);
@@ -148,7 +143,6 @@ export class Player {
         this.gun.position.set(0.55, 0.95, -0.45);
         this.mesh.add(this.gun);
 
-        // HP-бар
         this.hpBarBg = new THREE.Mesh(
             new THREE.PlaneGeometry(2.0, 0.25),
             new THREE.MeshBasicMaterial({ color: 0x000000 })
@@ -177,7 +171,7 @@ export class Player {
         const move = new THREE.Vector3(input.x, 0, input.y);
         let isMoving = false;
 
-        if (move.length() > 0.15) {
+        if (move.length() > 0.15 && !this.isFrozen) {
             isMoving = true;
             move.normalize().multiplyScalar(this.speed * dt);
 
@@ -191,6 +185,10 @@ export class Player {
             }
 
             this.moveDirection.copy(move).normalize();
+
+            // ВСЕГДА поворот в сторону движения
+            const moveAngle = Math.atan2(move.x, move.z);
+            this.mesh.rotation.y = moveAngle + Math.PI;
         }
 
         if (isMoving) {
@@ -214,7 +212,9 @@ export class Player {
         this.hpBar.position.x = -(1 - hpPercent) * 1.0;
     }
 
+    // Только прицеливание для выстрела — визуально поворачивает
     faceTarget(targetPos) {
+        if (!this.alive) return;
         const dir = new THREE.Vector3().subVectors(targetPos, this.mesh.position);
         const angle = Math.atan2(dir.x, dir.z);
         this.mesh.rotation.y = angle + Math.PI;
