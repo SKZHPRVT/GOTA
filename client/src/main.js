@@ -21,6 +21,7 @@ if (tg) {
     } catch (e) {}
 }
 
+// === Loading ===
 const loadingScreenEl = document.getElementById('loading-screen');
 const loadingBarFill = document.getElementById('loading-bar-fill');
 const loadingTextEl = document.getElementById('loading-text');
@@ -36,10 +37,12 @@ function hideLoadingScreen() {
     setTimeout(() => { loadingScreenEl.style.display = 'none'; }, 600);
 }
 
+// === Audio ===
 const audio = new AudioManager();
 document.addEventListener('touchstart', () => audio.unlock());
 document.addEventListener('click', () => audio.unlock());
 
+// === Scene ===
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xE8D8A8);
 scene.fog = new THREE.Fog(0xE8D8A8, 100, 300);
@@ -68,6 +71,7 @@ sun.shadow.camera.near = 1;
 sun.shadow.camera.far = 500;
 scene.add(sun);
 
+// === UI ===
 const joystick = new Joystick(
     document.getElementById('joystick'),
     document.getElementById('joystick-knob')
@@ -80,6 +84,11 @@ const bannerEl = document.getElementById('banner');
 const abilityBombEl = document.getElementById('ability-1');
 const abilityHammerEl = document.getElementById('ability-2');
 const damageFlashEl = document.getElementById('damage-flash');
+const spectateIndicatorEl = document.getElementById('spectate-indicator');
+
+const deathModalEl = document.getElementById('death-modal');
+const deathSpectateBtn = document.getElementById('death-spectate');
+const deathTakeoverBtn = document.getElementById('death-takeover');
 
 const bombHudEl = document.getElementById('bomb-hud');
 const bombTimerEl = document.getElementById('bomb-timer');
@@ -87,6 +96,7 @@ const bombStatusEl = document.getElementById('bomb-status');
 const defuseBarEl = document.getElementById('defuse-bar');
 const defuseBarFillEl = document.getElementById('defuse-bar-fill');
 
+// === State ===
 let player;
 let tBots = [];
 let ctBots = [];
@@ -104,11 +114,16 @@ let bombPlanted = false;
 let bombExploded = false;
 let bombDefused = false;
 
-// Фризтайм
+// Freeze
 const FREEZE_TIME = 3.0;
-let freezeTimer = 0;
 let isFrozen = true;
 
+// Смерть и наблюдение
+let deathModalShown = false;    // модалка уже показана?
+let spectateTarget = null;      // за кем наблюдаем
+let occupiedBot = null;         // занятый бот (когда takeover)
+
+// === Round ===
 const round = new RoundManager({
     roundsToWin: 5,
     roundDuration: 60,
@@ -117,23 +132,24 @@ const round = new RoundManager({
         showBanner(`Раунд ${n}`, '#FFD24A', 1.5);
         resetRound();
         audio.freezeEnd();
-        // Фриз 3 секунды, потом все бегут
-        freezeTimer = FREEZE_TIME;
         isFrozen = true;
+        deathModalShown = false;
+        hideDeathModal();
+        hideSpectateIndicator();
+
         setTimeout(() => {
             isFrozen = false;
-            // T-боты получают цели — 2 на A, 2 на B
-            const tA = tBots.filter(b => b.role === 'A');
-            const tB = tBots.filter(b => b.role === 'B');
+            // T-боты идут на A/B
             const plantA = plants.find(p => p.id === 'A');
             const plantB = plants.find(p => p.id === 'B');
+            const tA = tBots.filter(b => b.role === 'A');
+            const tB = tBots.filter(b => b.role === 'B');
             tA.forEach((bot, i) => {
                 if (plantA) bot.setGoal(plantA.x + (i - 0.5) * 8, plantA.z);
             });
             tB.forEach((bot, i) => {
                 if (plantB) bot.setGoal(plantB.x + (i - 0.5) * 8, plantB.z);
             });
-            // Все боты — снимаем фриз
             tBots.forEach(b => b.unfreeze());
             ctBots.forEach(b => b.unfreeze());
             audio.roundStart();
@@ -154,6 +170,8 @@ const round = new RoundManager({
         if (winner === 'T') audio.winT();
         else audio.winCT();
         hideBombHud();
+        hideDeathModal();
+        hideSpectateIndicator();
     },
     onMatchEnd: (winner, sT, sCT) => {
         audio.stopRoundMusic();
@@ -161,6 +179,7 @@ const round = new RoundManager({
         const color = winner === 'T' ? '#FFD24A' : '#5CA8FF';
         showBanner(text, color, 999);
         hideBombHud();
+        hideDeathModal();
     }
 });
 
@@ -172,12 +191,10 @@ function showBanner(text, color, duration) {
         setTimeout(() => { bannerEl.style.display = 'none'; }, duration * 1000);
     }
 }
-
 function updateScore(sT, sCT) {
     scoreTEl.textContent = `T ${sT}`;
     scoreCTEl.textContent = `CT ${sCT}`;
 }
-
 function showBombHud() {
     bombHudEl.classList.add('show');
     defuseBarEl.classList.remove('show');
@@ -202,6 +219,52 @@ function updateBombHud() {
     }
 }
 
+// === Death modal ===
+function showDeathModal() {
+    deathModalEl.classList.add('show');
+}
+function hideDeathModal() {
+    deathModalEl.classList.remove('show');
+}
+function showSpectateIndicator() {
+    spectateIndicatorEl.classList.add('show');
+}
+function hideSpectateIndicator() {
+    spectateIndicatorEl.classList.remove('show');
+}
+
+deathSpectateBtn.addEventListener('click', () => {
+    console.log('[death] spectate mode');
+    hideDeathModal();
+    spectateTarget = tBots.find(b => b.alive) || null;
+    showSpectateIndicator();
+});
+
+deathTakeoverBtn.addEventListener('click', () => {
+    console.log('[death] takeover mode');
+    hideDeathModal();
+    // Ищем живого T-бота, ближайшего к игроку
+    let nearestBot = null;
+    let nearestDist = Infinity;
+    for (const b of tBots) {
+        if (!b.alive) continue;
+        const d = b.mesh.position.distanceTo(player.mesh.position);
+        if (d < nearestDist) {
+            nearestDist = d;
+            nearestBot = b;
+        }
+    }
+    if (nearestBot) {
+        occupiedBot = nearestBot;
+        spectateTarget = nearestBot;
+        showSpectateIndicator();
+        spectateIndicatorEl.textContent = '🔄 УПРАВЛЕНИЕ БОТОМ';
+    } else {
+        showBanner('Нет живых ботов!', '#FF6666', 2);
+    }
+});
+
+// === INIT ===
 async function initGame() {
     setLoadingProgress(0, 'Загрузка звуков...');
 
@@ -230,23 +293,10 @@ async function initGame() {
 
     createTeams();
 
-    abilityBombEl.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        tryPlaceBomb();
-    }, { passive: false });
-    abilityBombEl.addEventListener('click', (e) => {
-        e.stopPropagation();
-        tryPlaceBomb();
-    });
-
-    abilityHammerEl.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        tryHammer();
-    }, { passive: false });
-    abilityHammerEl.addEventListener('click', (e) => {
-        e.stopPropagation();
-        tryHammer();
-    });
+    abilityBombEl.addEventListener('touchstart', (e) => { e.preventDefault(); tryPlaceBomb(); }, { passive: false });
+    abilityBombEl.addEventListener('click', (e) => { e.stopPropagation(); tryPlaceBomb(); });
+    abilityHammerEl.addEventListener('touchstart', (e) => { e.preventDefault(); tryHammer(); }, { passive: false });
+    abilityHammerEl.addEventListener('click', (e) => { e.stopPropagation(); tryHammer(); });
 
     camera.position.set(spawnT.x, 40, spawnT.z + 35);
 
@@ -265,8 +315,6 @@ function createTeams() {
     tBots = [];
     ctBots = [];
 
-    // === T-боты: 2 на A, 2 на B ===
-    // Роли по плэнтам, стартовая позиция — у спавна T, goal — плэнт A/B
     const tRoles = [
         { role: 'A', offset: { x: -15, z: -1 } },
         { role: 'A', offset: { x: -5,  z: 1 } },
@@ -280,7 +328,6 @@ function createTeams() {
         }, r.role));
     }
 
-    // === CT-боты: 1 mid, 2 A, 2 B ===
     const ctRoles = [
         { role: 'mid', pos: { x: 0,    z: -20 } },
         { role: 'A',   pos: { x: 60,   z: -60 } },
@@ -302,10 +349,18 @@ function resetRound() {
     bombExploded = false;
     bombDefused = false;
     hideBombHud();
+    hideDeathModal();
+    hideSpectateIndicator();
+
+    spectateTarget = null;
+    occupiedBot = null;
 
     player.hp = player.maxHp;
     player.alive = true;
+    player.isFrozen = true;
+    player.isAiming = false;
     player.mesh.position.set(spawnT.x, 0, spawnT.z);
+    player.mesh.rotation.y = 0;
 
     for (const b of tBots) b.die();
     for (const b of ctBots) b.die();
@@ -321,7 +376,6 @@ function tryPlaceBomb() {
         showBanner('Бомба уже заложена!', '#FF6666', 1.5);
         return;
     }
-    // Бомбу нельзя ставить во фризтайме
     if (isFrozen) {
         showBanner('Фризтайм!', '#FF6666', 1);
         return;
@@ -365,13 +419,8 @@ function tryPlaceBomb() {
     showBanner(`💣 Бомба на ${nearestPlant.id}!`, '#FFD24A', 2);
     showBombHud();
 
-    // После закладки — все боты идут к бомбе
-    tBots.forEach(b => {
-        if (b.alive) b.setGoal(nearestPlant.x, nearestPlant.z);
-    });
-    ctBots.forEach(b => {
-        if (b.alive) b.setGoal(nearestPlant.x, nearestPlant.z);
-    });
+    tBots.forEach(b => { if (b.alive) b.setGoal(nearestPlant.x, nearestPlant.z); });
+    ctBots.forEach(b => { if (b.alive) b.setGoal(nearestPlant.x, nearestPlant.z); });
 }
 
 function tryHammer() {
@@ -379,16 +428,33 @@ function tryHammer() {
     showBanner('🔨 Удар!', '#FFFFFF', 0.5);
 }
 
+// === Camera ===
 const cameraOffset = { y: 40, z: 35 };
+
 function updateCamera() {
-    if (!player) return;
-    const t = player.mesh.position;
-    camera.position.x += (t.x - camera.position.x) * 0.12;
-    camera.position.z += (t.z + cameraOffset.z - camera.position.z) * 0.12;
+    // Следим за: игроком → занятым ботом → spectate target
+    let target = null;
+    if (player.alive) {
+        target = player.mesh.position;
+    } else if (occupiedBot && occupiedBot.alive) {
+        target = occupiedBot.mesh.position;
+    } else if (spectateTarget && spectateTarget.alive) {
+        target = spectateTarget.mesh.position;
+    } else {
+        // Найти любого живого T-бота
+        const anyT = tBots.find(b => b.alive);
+        if (anyT) target = anyT.mesh.position;
+    }
+
+    if (!target) return;
+
+    camera.position.x += (target.x - camera.position.x) * 0.12;
+    camera.position.z += (target.z + cameraOffset.z - camera.position.z) * 0.12;
     camera.position.y = cameraOffset.y;
-    camera.lookAt(t.x, 0, t.z);
+    camera.lookAt(target.x, 0, target.z);
 }
 
+// === Damage flash ===
 let damageFlashTimer = null;
 function flashDamage() {
     damageFlashEl.classList.add('flash');
@@ -398,6 +464,7 @@ function flashDamage() {
     }, 120);
 }
 
+// === Main loop ===
 const clock = new THREE.Clock();
 
 function animate() {
@@ -411,28 +478,77 @@ function animate() {
     const prevPos = player.mesh.position.clone();
     const prevHp = player.hp;
 
-    // Игрок двигается только вне фризтайма
-    if (playing && !isFrozen) {
+    // Игрок
+    if (player.alive && playing && !isFrozen) {
         player.update(dt, joystick.direction, collisionRef);
-    } else if (playing) {
-        // Во фризтайме — анимация покоя
+        // Если игрок не стреляет — снимаем aiming (через 0.2 сек)
+        if (player.isAiming) {
+            player.aimTimer = (player.aimTimer || 0) - dt;
+            if (player.aimTimer <= 0) {
+                player.stopAiming();
+            }
+        }
+    } else if (player.alive && playing && isFrozen) {
         player.update(dt, { x: 0, y: 0 }, collisionRef);
     }
 
+    // Занятый бот — управляем им через джойстик
+    if (occupiedBot && occupiedBot.alive && playing) {
+        occupiedBot.isFrozen = false;
+        if (joystick.direction.x || joystick.direction.y) {
+            const moveDir = new THREE.Vector3(joystick.direction.x, 0, joystick.direction.y);
+            if (moveDir.length() > 0.15) {
+                moveDir.normalize().multiplyScalar(occupiedBot.speed * dt);
+                if (collisionRef) {
+                    const cur = occupiedBot.mesh.position;
+                    const res = collisionRef.resolveMove(cur.x, cur.z, moveDir.x, moveDir.z);
+                    occupiedBot.mesh.position.x = res.x;
+                    occupiedBot.mesh.position.z = res.z;
+                } else {
+                    occupiedBot.mesh.position.add(moveDir);
+                }
+                const angle = Math.atan2(moveDir.x, moveDir.z);
+                occupiedBot.mesh.rotation.y = angle + Math.PI;
+
+                // Анимация
+                occupiedBot.animTime += dt * 10;
+                const swing = Math.sin(occupiedBot.animTime) * 0.5;
+                occupiedBot.legL.rotation.x = swing;
+                occupiedBot.legR.rotation.x = -swing;
+                occupiedBot.armL.rotation.x = -swing * 0.7;
+                occupiedBot.armR.rotation.x = swing * 0.7;
+            }
+        }
+    }
+
+    // HP изменился
     if (player.hp < prevHp) flashDamage();
 
-    const moved = prevPos.distanceTo(player.mesh.position) > 0.05;
-    if (moved && playing) audio.footstep();
+    // Игрок умер — показать модалку
+    if (!player.alive && !deathModalShown && playing) {
+        deathModalShown = true;
+        audio.death();
+        setTimeout(() => {
+            if (playing) showDeathModal();
+        }, 500);
+    }
 
+    // Footsteps
+    const moved = prevPos.distanceTo(player.mesh.position) > 0.05;
+    if (moved && playing && player.alive) audio.footstep();
+
+    // Bomb
     if (currentBomb && currentBomb.alive) {
         const nearby = [];
         if (player.alive) nearby.push(player.mesh.position);
+        if (occupiedBot && occupiedBot.alive) nearby.push(occupiedBot.mesh.position);
         currentBomb.update(dt, nearby);
         updateBombHud();
     }
 
     const allBots = [...tBots, ...ctBots];
 
+    // Игрок стреляет
     if (player.alive && playing && !isFrozen) {
         const enemiesForPlayer = ctBots.filter(b => b.alive);
         const target = combat.findNearestTarget(player.mesh.position, enemiesForPlayer, player.attackRange);
@@ -441,6 +557,7 @@ function animate() {
             const toPos = target.mesh.position;
             if (collision.hasLineOfSight(fromPos, toPos)) {
                 player.faceTarget(toPos);
+                player.aimTimer = 0.2;
                 player.attackTimer -= dt;
                 if (player.attackTimer <= 0) {
                     player.attackTimer = player.attackCooldown;
@@ -451,6 +568,7 @@ function animate() {
         }
     }
 
+    // Боты
     if (playing) {
         const hasLOS = collision ? (a, b) => collision.hasLineOfSight(a, b) : () => true;
         for (const bot of tBots) {
@@ -475,8 +593,10 @@ function animate() {
         }
     }
 
+    // Bullets + damage
     combat.update(dt, [...ctBots, ...tBots], player, () => flashDamage());
 
+    // Round end check
     const aliveT = tBots.filter(b => b.alive).length + (player.alive ? 1 : 0);
     const aliveCT = ctBots.filter(b => b.alive).length;
 

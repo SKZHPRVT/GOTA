@@ -1,17 +1,18 @@
 import * as THREE from 'three';
 
-const BULLET_SPEED = 40;
+const BULLET_SPEED = 50;
 const BULLET_LIFETIME = 1.5;
 
 export class Bullet {
-    constructor(scene, position, direction, team, damage = 20) {
+    constructor(scene, position, direction, team, damage = 15) {
         this.scene = scene;
         this.team = team;
         this.damage = damage;
         this.life = BULLET_LIFETIME;
         this.alive = true;
 
-        const geo = new THREE.SphereGeometry(0.15, 8, 8);
+        // Толстая пуля — 0.35 радиус
+        const geo = new THREE.SphereGeometry(0.35, 8, 8);
         const mat = new THREE.MeshBasicMaterial({
             color: team === 'T' ? 0xFFAA00 : 0x66AAFF
         });

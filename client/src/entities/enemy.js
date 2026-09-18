@@ -32,7 +32,7 @@ export class Enemy {
     constructor(scene, team = 'CT', position = { x: 0, z: -42 }, role = 'mid') {
         this.scene = scene;
         this.team = team;
-        this.role = role; // 'mid' | 'A' | 'B'
+        this.role = role;
         this.hp = 100;
         this.maxHp = 100;
         this.alive = true;
@@ -40,13 +40,8 @@ export class Enemy {
         this.attackTimer = 0;
         this.target = null;
 
-        // Домашняя позиция (стартовая точка)
         this.homePos = { x: position.x, z: position.z };
-
-        // Текущая цель — куда идти (по умолчанию homePos)
         this.goalPos = { x: position.x, z: position.z };
-
-        // Фриз — не двигаться
         this.isFrozen = true;
 
         const isT = team === 'T';
@@ -57,7 +52,6 @@ export class Enemy {
         this.mesh = new THREE.Group();
         this.mesh.scale.setScalar(SCALE);
 
-        // Ноги
         const legGeo = new THREE.CylinderGeometry(0.14, 0.14, 0.5, 8);
         const legMat = toonMat(colors.legs);
         this.legL = new THREE.Mesh(legGeo, legMat);
@@ -71,7 +65,6 @@ export class Enemy {
         addOutline(this.legR, 0.1);
         this.mesh.add(this.legR);
 
-        // Туловище
         const bodyGeo = new THREE.CylinderGeometry(0.32, 0.35, 0.7, 12);
         const bodyMat = toonMat(colors.body);
         this.body = new THREE.Mesh(bodyGeo, bodyMat);
@@ -89,7 +82,6 @@ export class Enemy {
             this.mesh.add(this.vest);
         }
 
-        // ГОЛОВА — КУБ
         const headGeo = new THREE.BoxGeometry(0.85, 0.85, 0.85);
         const headMat = toonMat(colors.head);
         this.head = new THREE.Mesh(headGeo, headMat);
@@ -116,7 +108,6 @@ export class Enemy {
             this.mesh.add(this.bandana);
         }
 
-        // Глаза
         const eyeGeo = new THREE.SphereGeometry(0.08, 6, 6);
         const eyeMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
         const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
@@ -126,7 +117,6 @@ export class Enemy {
         eyeR.position.set(0.22, 1.65, -0.43);
         this.mesh.add(eyeR);
 
-        // Руки
         const armGeo = new THREE.CylinderGeometry(0.09, 0.09, 0.55, 6);
         const armMat = toonMat(colors.arms);
         this.armL = new THREE.Mesh(armGeo, armMat);
@@ -140,7 +130,6 @@ export class Enemy {
         addOutline(this.armR, 0.1);
         this.mesh.add(this.armR);
 
-        // Оружие
         this.gun = new THREE.Group();
         const gunBody = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.9), toonMat(colors.gun));
         this.gun.add(gunBody);
@@ -150,7 +139,6 @@ export class Enemy {
         this.gun.position.set(0.55, 0.95, -0.45);
         this.mesh.add(this.gun);
 
-        // HP-бар
         this.hpBarBg = new THREE.Mesh(
             new THREE.PlaneGeometry(2.0, 0.25),
             new THREE.MeshBasicMaterial({ color: 0x000000 })
@@ -172,12 +160,10 @@ export class Enemy {
         this.animTime = 0;
     }
 
-    // Установить цель движения
     setGoal(x, z) {
         this.goalPos = { x, z };
     }
 
-    // Снять фриз
     unfreeze() {
         this.isFrozen = false;
     }
@@ -218,14 +204,10 @@ export class Enemy {
         this.hpBar.scale.x = hpPercent;
         this.hpBar.position.x = -(1 - hpPercent) * 1.0;
 
-        // Во фризе — не двигаемся, не стреляем
-        if (this.isFrozen) {
-            return null;
-        }
+        if (this.isFrozen) return null;
 
         const target = this.findTarget(enemyList, playerPos, playerAlive);
 
-        // Если враг близко — стреляем
         if (target) {
             const toTarget = new THREE.Vector3().subVectors(
                 target.mesh.position, this.mesh.position
@@ -234,18 +216,14 @@ export class Enemy {
 
             this.attackTimer -= dt;
 
-            // Враг в зоне видимости — стреляем и смотрим на него
             if (
                 distToTarget < ATTACK_RANGE &&
                 this.attackTimer <= 0 &&
                 hasLOS(this.mesh.position, target.mesh.position)
             ) {
                 this.attackTimer = ATTACK_COOLDOWN;
-
-                // Поворачиваемся к цели
                 const angle = Math.atan2(toTarget.x, toTarget.z);
                 this.mesh.rotation.y = angle + Math.PI;
-
                 return {
                     type: 'shoot',
                     from: this.mesh.position.clone().add(new THREE.Vector3(0, 1.6, 0)),
@@ -255,14 +233,12 @@ export class Enemy {
                 };
             }
 
-            // Враг рядом (<40 юнитов) и видим — идём к нему
             if (distToTarget < 40 && hasLOS(this.mesh.position, target.mesh.position)) {
                 this.moveTo(target.mesh.position, dt, collision);
                 return null;
             }
         }
 
-        // Иначе — идём к цели (goalPos)
         const distToGoal = Math.hypot(
             this.goalPos.x - this.mesh.position.x,
             this.goalPos.z - this.mesh.position.z
@@ -307,12 +283,14 @@ export class Enemy {
     }
 
     takeDamage(amount) {
-        if (!this.alive) return;
+        if (!this.alive) return false;
         this.hp -= amount;
         if (this.hp <= 0) {
             this.hp = 0;
             this.die();
+            return true;   // умер
         }
+        return false;
     }
 
     die() {

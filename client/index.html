@@ -70,12 +70,11 @@
             text-shadow: 1px 1px 2px #000;
         }
 
-        /* TOP HUD — ПРИЖАТ К ВЕРХУ */
+        /* TOP HUD */
         #top-hud {
             position: fixed;
             top: 4px;
-            left: 0;
-            right: 0;
+            left: 0; right: 0;
             z-index: 10;
             display: flex;
             align-items: center;
@@ -104,7 +103,7 @@
             text-align: center;
         }
 
-        /* BOMB TIMER — под счётом, 14px */
+        /* BOMB HUD */
         #bomb-hud {
             position: fixed;
             top: 42px;
@@ -174,6 +173,7 @@
         }
         #damage-flash.flash { opacity: 1; }
 
+        /* JOYSTICK */
         #joystick {
             position: fixed;
             bottom: 30px; left: 30px;
@@ -232,6 +232,81 @@
             text-align: center;
             pointer-events: none;
         }
+
+        /* === DEATH MODAL === */
+        #death-modal {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.8);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 30;
+            text-align: center;
+            padding: 20px;
+        }
+        #death-modal.show { display: flex; }
+        #death-title {
+            font-size: 52px;
+            font-weight: bold;
+            color: #ff3030;
+            text-shadow: 0 0 30px #ff0000, 3px 3px 6px #000;
+            margin-bottom: 12px;
+            letter-spacing: 4px;
+        }
+        #death-subtitle {
+            font-size: 14px;
+            color: #999;
+            margin-bottom: 32px;
+            letter-spacing: 2px;
+        }
+        #death-buttons {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 500px;
+        }
+        .death-btn {
+            padding: 16px 28px;
+            font-size: 18px;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+            background: rgba(30,30,30,0.9);
+            color: #fff;
+            border: 3px solid #fff;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: transform 0.1s, background 0.15s;
+            user-select: none;
+            touch-action: manipulation;
+            min-width: 180px;
+        }
+        .death-btn:active { transform: scale(0.95); }
+        .death-btn:hover { background: rgba(80,80,80,0.9); }
+        .death-btn.primary {
+            background: rgba(200,30,30,0.8);
+            border-color: #ff5555;
+        }
+
+        /* === SPECTATE MODE indicator === */
+        #spectate-indicator {
+            position: fixed;
+            top: 8px;
+            left: 8px;
+            background: rgba(0,0,0,0.7);
+            border: 2px solid #FFD24A;
+            border-radius: 8px;
+            padding: 6px 14px;
+            font-size: 12px;
+            font-weight: bold;
+            color: #FFD24A;
+            z-index: 12;
+            display: none;
+            text-shadow: 1px 1px 2px #000;
+        }
+        #spectate-indicator.show { display: block; }
     </style>
 </head>
 <body>
@@ -257,6 +332,8 @@
         <div id="defuse-bar"><div id="defuse-bar-fill"></div></div>
     </div>
 
+    <div id="spectate-indicator">👁 НАБЛЮДЕНИЕ</div>
+
     <div id="hp-hud">HP: 100</div>
 
     <div id="joystick"><div id="joystick-knob"></div></div>
@@ -266,6 +343,15 @@
     </div>
 
     <div id="banner"></div>
+
+    <div id="death-modal">
+        <div id="death-title">💀 ТЫ УБИТ</div>
+        <div id="death-subtitle">Выбери действие</div>
+        <div id="death-buttons">
+            <button class="death-btn" id="death-spectate">👁 Наблюдать</button>
+            <button class="death-btn primary" id="death-takeover">🔄 Занять бота</button>
+        </div>
+    </div>
 
     <script type="module" src="/src/main.js"></script>
 </body>
