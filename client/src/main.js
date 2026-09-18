@@ -21,7 +21,6 @@ if (tg) {
     } catch (e) {}
 }
 
-// === Loading ===
 const loadingScreenEl = document.getElementById('loading-screen');
 const loadingBarFill = document.getElementById('loading-bar-fill');
 const loadingTextEl = document.getElementById('loading-text');
@@ -37,12 +36,10 @@ function hideLoadingScreen() {
     setTimeout(() => { loadingScreenEl.style.display = 'none'; }, 600);
 }
 
-// === Audio ===
 const audio = new AudioManager();
 document.addEventListener('touchstart', () => audio.unlock());
 document.addEventListener('click', () => audio.unlock());
 
-// === Scene ===
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xE8D8A8);
 scene.fog = new THREE.Fog(0xE8D8A8, 100, 300);
@@ -71,7 +68,6 @@ sun.shadow.camera.near = 1;
 sun.shadow.camera.far = 500;
 scene.add(sun);
 
-// === UI ===
 const joystick = new Joystick(
     document.getElementById('joystick'),
     document.getElementById('joystick-knob')
@@ -96,7 +92,6 @@ const bombStatusEl = document.getElementById('bomb-status');
 const defuseBarEl = document.getElementById('defuse-bar');
 const defuseBarFillEl = document.getElementById('defuse-bar-fill');
 
-// === State ===
 let player;
 let tBots = [];
 let ctBots = [];
@@ -114,16 +109,13 @@ let bombPlanted = false;
 let bombExploded = false;
 let bombDefused = false;
 
-// Freeze
 const FREEZE_TIME = 3.0;
 let isFrozen = true;
 
-// Смерть и наблюдение
-let deathModalShown = false;    // модалка уже показана?
-let spectateTarget = null;      // за кем наблюдаем
-let occupiedBot = null;         // занятый бот (когда takeover)
+let deathModalShown = false;
+let spectateTarget = null;
+let occupiedBot = null;
 
-// === Round ===
 const round = new RoundManager({
     roundsToWin: 5,
     roundDuration: 60,
@@ -139,7 +131,7 @@ const round = new RoundManager({
 
         setTimeout(() => {
             isFrozen = false;
-            player.isFrozen = false;
+            player.isFrozen = false;   // разморозить игрока
             // T-боты идут на A/B
             const plantA = plants.find(p => p.id === 'A');
             const plantB = plants.find(p => p.id === 'B');
@@ -171,8 +163,7 @@ const round = new RoundManager({
         if (winner === 'T') audio.winT();
         else audio.winCT();
         hideBombHud();
-        hideDeathModal();
-        hideSpectateIndicator();
+        // НЕ скрываем death modal — пусть игрок видит и жмёт кнопки
     },
     onMatchEnd: (winner, sT, sCT) => {
         audio.stopRoundMusic();
@@ -220,7 +211,6 @@ function updateBombHud() {
     }
 }
 
-// === Death modal ===
 function showDeathModal() {
     deathModalEl.classList.add('show');
 }
@@ -232,6 +222,7 @@ function showSpectateIndicator() {
 }
 function hideSpectateIndicator() {
     spectateIndicatorEl.classList.remove('show');
+    spectateIndicatorEl.textContent = '👁 НАБЛЮДЕНИЕ';
 }
 
 deathSpectateBtn.addEventListener('click', () => {
@@ -244,6 +235,7 @@ deathSpectateBtn.addEventListener('click', () => {
 deathTakeoverBtn.addEventListener('click', () => {
     console.log('[death] takeover mode');
     hideDeathModal();
+
     // Ищем живого T-бота, ближайшего к игроку
     let nearestBot = null;
     let nearestDist = Infinity;
@@ -265,7 +257,6 @@ deathTakeoverBtn.addEventListener('click', () => {
     }
 });
 
-// === INIT ===
 async function initGame() {
     setLoadingProgress(0, 'Загрузка звуков...');
 
@@ -359,7 +350,6 @@ function resetRound() {
     player.hp = player.maxHp;
     player.alive = true;
     player.isFrozen = true;
-    player.isAiming = false;
     player.mesh.position.set(spawnT.x, 0, spawnT.z);
     player.mesh.rotation.y = 0;
 
@@ -429,11 +419,9 @@ function tryHammer() {
     showBanner('🔨 Удар!', '#FFFFFF', 0.5);
 }
 
-// === Camera ===
 const cameraOffset = { y: 40, z: 35 };
 
 function updateCamera() {
-    // Следим за: игроком → занятым ботом → spectate target
     let target = null;
     if (player.alive) {
         target = player.mesh.position;
@@ -442,9 +430,11 @@ function updateCamera() {
     } else if (spectateTarget && spectateTarget.alive) {
         target = spectateTarget.mesh.position;
     } else {
-        // Найти любого живого T-бота
         const anyT = tBots.find(b => b.alive);
-        if (anyT) target = anyT.mesh.position;
+        if (anyT) {
+            spectateTarget = anyT;
+            target = anyT.mesh.position;
+        }
     }
 
     if (!target) return;
@@ -455,7 +445,6 @@ function updateCamera() {
     camera.lookAt(target.x, 0, target.z);
 }
 
-// === Damage flash ===
 let damageFlashTimer = null;
 function flashDamage() {
     damageFlashEl.classList.add('flash');
@@ -465,7 +454,6 @@ function flashDamage() {
     }, 120);
 }
 
-// === Main loop ===
 const clock = new THREE.Clock();
 
 function animate() {
@@ -479,24 +467,15 @@ function animate() {
     const prevPos = player.mesh.position.clone();
     const prevHp = player.hp;
 
-    // Игрок
     if (player.alive && playing && !isFrozen) {
         player.update(dt, joystick.direction, collisionRef);
-        // Если игрок не стреляет — снимаем aiming (через 0.2 сек)
-        if (player.isAiming) {
-            player.aimTimer = (player.aimTimer || 0) - dt;
-            if (player.aimTimer <= 0) {
-                player.stopAiming();
-            }
-        }
     } else if (player.alive && playing && isFrozen) {
         player.update(dt, { x: 0, y: 0 }, collisionRef);
     }
 
-    // Занятый бот — управляем им через джойстик
+    // Занятый бот
     if (occupiedBot && occupiedBot.alive && playing) {
         occupiedBot.isFrozen = false;
-            player.isFrozen = false;
         if (joystick.direction.x || joystick.direction.y) {
             const moveDir = new THREE.Vector3(joystick.direction.x, 0, joystick.direction.y);
             if (moveDir.length() > 0.15) {
@@ -512,7 +491,6 @@ function animate() {
                 const angle = Math.atan2(moveDir.x, moveDir.z);
                 occupiedBot.mesh.rotation.y = angle + Math.PI;
 
-                // Анимация
                 occupiedBot.animTime += dt * 10;
                 const swing = Math.sin(occupiedBot.animTime) * 0.5;
                 occupiedBot.legL.rotation.x = swing;
@@ -523,23 +501,20 @@ function animate() {
         }
     }
 
-    // HP изменился
     if (player.hp < prevHp) flashDamage();
 
-    // Игрок умер — показать модалку
-    if (!player.alive && !deathModalShown && playing) {
+    // Игрок умер — модалка и звук. Показываем ВСЕГДА, даже если раунд закончился
+    if (!player.alive && !deathModalShown) {
         deathModalShown = true;
         audio.death();
         setTimeout(() => {
-            if (playing) showDeathModal();
+            showDeathModal();
         }, 500);
     }
 
-    // Footsteps
     const moved = prevPos.distanceTo(player.mesh.position) > 0.05;
     if (moved && playing && player.alive) audio.footstep();
 
-    // Bomb
     if (currentBomb && currentBomb.alive) {
         const nearby = [];
         if (player.alive) nearby.push(player.mesh.position);
@@ -550,7 +525,6 @@ function animate() {
 
     const allBots = [...tBots, ...ctBots];
 
-    // Игрок стреляет
     if (player.alive && playing && !isFrozen) {
         const enemiesForPlayer = ctBots.filter(b => b.alive);
         const target = combat.findNearestTarget(player.mesh.position, enemiesForPlayer, player.attackRange);
@@ -559,7 +533,6 @@ function animate() {
             const toPos = target.mesh.position;
             if (collision.hasLineOfSight(fromPos, toPos)) {
                 player.faceTarget(toPos);
-                player.aimTimer = 0.2;
                 player.attackTimer -= dt;
                 if (player.attackTimer <= 0) {
                     player.attackTimer = player.attackCooldown;
@@ -570,11 +543,30 @@ function animate() {
         }
     }
 
-    // Боты
+    // Занятый бот тоже стреляет
+    if (occupiedBot && occupiedBot.alive && playing) {
+        const enemiesForBot = ctBots.filter(b => b.alive);
+        const target = combat.findNearestTarget(occupiedBot.mesh.position, enemiesForBot, 20);
+        if (target && collision) {
+            const fromPos = occupiedBot.mesh.position;
+            const toPos = target.mesh.position;
+            if (collision.hasLineOfSight(fromPos, toPos)) {
+                occupiedBot.mesh.rotation.y = Math.atan2(toPos.x - fromPos.x, toPos.z - fromPos.z) + Math.PI;
+                occupiedBot.attackTimer -= dt;
+                if (occupiedBot.attackTimer <= 0) {
+                    occupiedBot.attackTimer = 0.8;
+                    combat.shoot(fromPos, target, 'T');
+                    audio.shoot();
+                }
+            }
+        }
+    }
+
     if (playing) {
         const hasLOS = collision ? (a, b) => collision.hasLineOfSight(a, b) : () => true;
         for (const bot of tBots) {
             if (!bot.alive) continue;
+            if (bot === occupiedBot) continue;   // занятым управляет игрок
             const action = bot.update(dt, allBots, player.mesh.position, player.alive, collisionRef, hasLOS);
             if (action?.type === 'shoot') {
                 const fakeTarget = { mesh: { position: action.from.clone().add(action.direction.clone().multiplyScalar(10)) } };
@@ -595,10 +587,8 @@ function animate() {
         }
     }
 
-    // Bullets + damage
     combat.update(dt, [...ctBots, ...tBots], player, () => flashDamage());
 
-    // Round end check
     const aliveT = tBots.filter(b => b.alive).length + (player.alive ? 1 : 0);
     const aliveCT = ctBots.filter(b => b.alive).length;
 
