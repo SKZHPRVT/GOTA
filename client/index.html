@@ -8,10 +8,8 @@
     <meta name="full-screen" content="yes">
     <title>GOta</title>
 
-    <!-- Скрипт Telegram — обязательно ПЕРЕД своими скриптами -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
-    <!-- Форсим fullscreen ДО загрузки модулей -->
     <script>
         (function() {
             var tg = window.Telegram && window.Telegram.WebApp;
@@ -20,6 +18,20 @@
                 return;
             }
 
+            // Функция лочения landscape
+            window.__tgLockLandscape = function() {
+                if (!tg.lockOrientation) {
+                    console.warn('[tg] lockOrientation недоступен (Bot API < 8.0)');
+                    return;
+                }
+                try {
+                    tg.lockOrientation('landscape');
+                    console.log('[tg] locked to landscape');
+                } catch (e) {
+                    console.error('[tg] lockOrientation failed:', e);
+                }
+            };
+
             try {
                 tg.ready();
                 tg.expand();
@@ -27,32 +39,51 @@
                 if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
                 if (tg.setHeaderColor) tg.setHeaderColor('#000000');
                 if (tg.setBackgroundColor) tg.setBackgroundColor('#C2B280');
-                if (tg.lockOrientation) {
-                    try { tg.lockOrientation('landscape'); } catch (e) {}
-                }
             } catch (e) {
                 console.error('[tg-head]', e);
             }
 
-            // Логируем события
+            // Лочим landscape только когда fullscreen активен
             if (tg.onEvent) {
-                tg.onEvent('fullscreenChanged', () => {
+                tg.onEvent('fullscreenChanged', function() {
                     console.log('[tg] fullscreenChanged. isFullscreen =', tg.isFullscreen);
+                    if (tg.isFullscreen) {
+                        window.__tgLockLandscape();
+                    }
                 });
-                tg.onEvent('fullscreenFailed', (e) => {
+
+                tg.onEvent('fullscreenFailed', function(e) {
                     console.error('[tg] fullscreenFailed:', e);
+                    window.__tgLockLandscape();
                 });
-                tg.onEvent('viewportChanged', (e) => {
-                    console.log('[tg] viewportChanged. h =', tg.viewportHeight, 'stable =', tg.viewportStableHeight, 'isStateStable =', e.isStateStable);
+
+                tg.onEvent('viewportChanged', function(e) {
+                    console.log('[tg] viewport h=', tg.viewportHeight, 'stable=', tg.viewportStableHeight, 'stable?', e.isStateStable);
                 });
             }
+
+            // Fallback: если fullscreen уже активен
+            setTimeout(function() {
+                if (tg.isFullscreen) {
+                    window.__tgLockLandscape();
+                }
+            }, 500);
+
+            // Плюс — по первому тапу пользователя
+            var firstTap = function() {
+                window.__tgLockLandscape();
+                document.removeEventListener('touchstart', firstTap);
+                document.removeEventListener('click', firstTap);
+            };
+            document.addEventListener('touchstart', firstTap, { once: true });
+            document.addEventListener('click', firstTap, { once: true });
+
         })();
     </script>
 
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
-        /* Safe-area переменные от Telegram */
         :root {
             --safe-top: var(--tg-safe-area-inset-top, 0px);
             --safe-bottom: var(--tg-safe-area-inset-bottom, 0px);
@@ -79,7 +110,6 @@
         }
         canvas { display: block; width: 100%; height: 100%; }
 
-        /* HUD сверху — с учётом safe-area */
         #top-hud {
             position: fixed;
             top: calc(10px + var(--content-top));
@@ -111,7 +141,6 @@
             opacity: 0.85;
             text-shadow: 1px 1px 2px #000;
         }
-
         #hp-hud {
             position: fixed;
             bottom: calc(20px + var(--content-bottom));
@@ -121,14 +150,11 @@
             text-shadow: 2px 2px 3px #000;
             z-index: 10;
         }
-
-        /* Джойстик — слева снизу, с safe-area */
         #joystick {
             position: fixed;
             bottom: calc(30px + var(--content-bottom));
             left: calc(30px + var(--content-left));
-            width: 140px;
-            height: 140px;
+            width: 140px; height: 140px;
             background: rgba(255,255,255,0.1);
             border: 2px solid rgba(255,255,255,0.3);
             border-radius: 50%;
@@ -137,17 +163,13 @@
         }
         #joystick-knob {
             position: absolute;
-            width: 60px;
-            height: 60px;
-            top: 50%;
-            left: 50%;
+            width: 60px; height: 60px;
+            top: 50%; left: 50%;
             transform: translate(-50%, -50%);
             background: rgba(255,255,255,0.4);
             border-radius: 50%;
             pointer-events: none;
         }
-
-        /* Кнопки способностей — справа снизу, с safe-area */
         #abilities {
             position: fixed;
             bottom: calc(30px + var(--content-bottom));
@@ -157,8 +179,7 @@
             z-index: 10;
         }
         .ability {
-            width: 80px;
-            height: 80px;
+            width: 80px; height: 80px;
             border-radius: 50%;
             background: rgba(255,255,255,0.15);
             border: 2px solid rgba(255,255,255,0.35);
@@ -181,31 +202,24 @@
 
         #banner {
             position: fixed;
-            top: 50%;
-            left: 50%;
+            top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            font-size: 56px;
-            font-weight: bold;
+            font-size: 56px; font-weight: bold;
             text-shadow: 3px 3px 6px #000;
             z-index: 20;
             display: none;
             text-align: center;
             pointer-events: none;
         }
-
         #rotate-hint {
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
-            background: #111;
-            color: #fff;
+            background: #111; color: #fff;
             display: none;
-            justify-content: center;
-            align-items: center;
+            justify-content: center; align-items: center;
             flex-direction: column;
-            font-size: 22px;
-            z-index: 100;
-            text-align: center;
-            padding: 20px;
+            font-size: 22px; z-index: 100;
+            text-align: center; padding: 20px;
         }
         @media (orientation: portrait) {
             #rotate-hint { display: flex; }

@@ -17,44 +17,68 @@ if (tg) {
         if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
         if (tg.setHeaderColor) tg.setHeaderColor('#000000');
         if (tg.setBackgroundColor) tg.setBackgroundColor('#C2B280');
+        if (tg.lockOrientation) {
+            try { tg.lockOrientation('landscape'); } catch (e) {}
+        }
     } catch (e) { console.error('[tg-main]', e); }
-}
 
-// === Debug-панель ===
-const debugEl = document.createElement('div');
-debugEl.style.cssText = `
-    position: fixed;
-    top: calc(80px + var(--content-top, 0px));
-    right: calc(10px + var(--content-right, 0px));
-    background: rgba(0,0,0,0.75);
-    color: #0f0;
-    font-size: 11px;
-    padding: 6px 10px;
-    border-radius: 6px;
-    z-index: 60;
-    font-family: monospace;
-    pointer-events: none;
-    white-space: pre;
-    line-height: 1.4;
-`;
-document.body.appendChild(debugEl);
-
-function updateDebug() {
-    if (!tg) {
-        debugEl.textContent = `no Telegram\ninnerH: ${window.innerHeight}`;
-        return;
+    // Fallback: лочим landscape после fullscreen и по тапу
+    if (tg.onEvent) {
+        tg.onEvent('fullscreenChanged', () => {
+            if (tg.isFullscreen && tg.lockOrientation) {
+                try { tg.lockOrientation('landscape'); } catch (e) {}
+            }
+        });
     }
-    debugEl.textContent =
-        `tg v${tg.version} | ${tg.platform}\n` +
-        `expanded: ${tg.isExpanded}\n` +
-        `fullscr: ${tg.isFullscreen}\n` +
-        `vh: ${Math.round(tg.viewportHeight)}/${Math.round(tg.viewportStableHeight)}\n` +
-        `inner: ${window.innerHeight}\n` +
-        `screen: ${window.screen.width}x${window.screen.height}\n` +
-        `orient: ${screen.orientation?.type || '?'}`;
+
+    document.addEventListener('touchstart', function tryLock() {
+        if (tg.lockOrientation) {
+            try { tg.lockOrientation('landscape'); } catch (e) {}
+        }
+        document.removeEventListener('touchstart', tryLock);
+    }, { once: true });
 }
-updateDebug();
-setInterval(updateDebug, 1000);
+
+// === Debug-панель (только с ?debug=1) ===
+const showDebug = new URLSearchParams(window.location.search).get('debug') === '1';
+
+if (showDebug) {
+    const debugEl = document.createElement('div');
+    debugEl.style.cssText = `
+        position: fixed;
+        top: calc(80px + var(--content-top, 0px));
+        right: calc(10px + var(--content-right, 0px));
+        background: rgba(0,0,0,0.75);
+        color: #0f0;
+        font-size: 11px;
+        padding: 6px 10px;
+        border-radius: 6px;
+        z-index: 60;
+        font-family: monospace;
+        pointer-events: none;
+        white-space: pre;
+        line-height: 1.4;
+    `;
+    document.body.appendChild(debugEl);
+
+    const updateDebug = () => {
+        if (!tg) {
+            debugEl.textContent = `no Telegram\ninnerH: ${window.innerHeight}`;
+            return;
+        }
+        debugEl.textContent =
+            `tg v${tg.version} | ${tg.platform}\n` +
+            `expanded: ${tg.isExpanded}\n` +
+            `fullscr: ${tg.isFullscreen}\n` +
+            `orientLock: ${tg.isOrientationLocked}\n` +
+            `vh: ${Math.round(tg.viewportHeight)}/${Math.round(tg.viewportStableHeight)}\n` +
+            `inner: ${window.innerHeight}\n` +
+            `screen: ${window.screen.width}x${window.screen.height}\n` +
+            `orient: ${screen.orientation?.type || '?'}`;
+    };
+    updateDebug();
+    setInterval(updateDebug, 1000);
+}
 
 // === Сцена ===
 const scene = new THREE.Scene();
