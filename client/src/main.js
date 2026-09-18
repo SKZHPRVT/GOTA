@@ -70,6 +70,12 @@ const hpEl = document.getElementById('hp-hud');
 const bannerEl = document.getElementById('banner');
 const abilityBombEl = document.getElementById('ability-1');
 const abilityHammerEl = document.getElementById('ability-2');
+const damageFlashEl = document.getElementById('damage-flash');
+
+// Compass
+const compassEl = document.getElementById('bomb-compass');
+const compassArrowEl = document.getElementById('compass-arrow');
+const compassDistEl = document.getElementById('compass-distance');
 
 // Bomb HUD
 const bombHudEl = document.getElementById('bomb-hud');
@@ -91,11 +97,10 @@ let spawnCT = { x: -25.5, z: -57 };
 let plants = [];
 let FLOORS = [];
 
-// === БОМБА ===
-let currentBomb = null;      // активная бомба
-let bombPlanted = false;     // бомба заложена
-let bombExploded = false;    // бомба взорвана
-let bombDefused = false;     // бомба разминирована
+let currentBomb = null;
+let bombPlanted = false;
+let bombExploded = false;
+let bombDefused = false;
 
 // === RoundManager ===
 const round = new RoundManager({
@@ -125,6 +130,7 @@ const round = new RoundManager({
         if (winner === 'T') audio.winT();
         else audio.winCT();
         hideBombHud();
+        hideCompass();
     },
     onMatchEnd: (winner, sT, sCT) => {
         audio.stopRoundMusic();
@@ -132,6 +138,7 @@ const round = new RoundManager({
         const color = winner === 'T' ? '#FFD24A' : '#5CA8FF';
         showBanner(text, color, 999);
         hideBombHud();
+        hideCompass();
     }
 });
 
@@ -153,13 +160,15 @@ function updateScore(sT, sCT) {
 function showBombHud() {
     bombHudEl.classList.add('show');
     defuseBarEl.classList.remove('show');
+    compassEl.classList.add('show');
 }
-
 function hideBombHud() {
     bombHudEl.classList.remove('show');
     defuseBarEl.classList.remove('show');
 }
-
+function hideCompass() {
+    compassEl.classList.remove('show');
+}
 function updateBombHud() {
     if (!currentBomb) return;
     bombTimerEl.textContent = Math.ceil(currentBomb.timer);
@@ -174,6 +183,33 @@ function updateBombHud() {
         bombStatusEl.style.color = '#ff3030';
         defuseBarEl.classList.remove('show');
     }
+}
+
+// === КОМПАС на бомбу ===
+function updateCompass() {
+    if (!currentBomb || !player || !player.alive) {
+        hideCompass();
+        return;
+    }
+
+    const dx = currentBomb.position.x - player.mesh.position.x;
+    const dz = currentBomb.position.z - player.mesh.position.z;
+    const dist = Math.hypot(dx, dz);
+
+    // Угол от игрока до бомбы (мировые координаты)
+    const angleToBomb = Math.atan2(dx, dz); // 0 = вперёд (Z+), π/2 = вправо (X+)
+
+    // Поворот игрока (куда смотрит)
+    const playerAngle = player.mesh.rotation.y - Math.PI; // корректировка на +PI (внутри faceTarget)
+
+    // Относительный угол: стрелка показывает направление
+    let relAngle = angleToBomb - playerAngle;
+
+    // Переводим в градусы
+    const deg = relAngle * 180 / Math.PI;
+
+    compassArrowEl.style.transform = `rotate(${deg}deg)`;
+    compassDistEl.textContent = `${Math.round(dist)}м`;
 }
 
 // === INIT ===
@@ -193,7 +229,7 @@ async function initGame() {
 
     createTeams();
 
-    // Кнопка 💣 — ставит бомбу
+    // Кнопка 💣
     abilityBombEl.addEventListener('touchstart', (e) => {
         e.preventDefault();
         tryPlaceBomb();
@@ -203,7 +239,7 @@ async function initGame() {
         tryPlaceBomb();
     });
 
-    // Кнопка 🔨 — разминирует бомбу (CT-логика) ИЛИ удар по башне (когда не CT)
+    // Кнопка 🔨
     abilityHammerEl.addEventListener('touchstart', (e) => {
         e.preventDefault();
         tryHammer();
@@ -218,32 +254,43 @@ async function initGame() {
     animate();
 }
 
+// === СОЗДАНИЕ КОМАНД ===
+// T-боты: 1 mid, 2 на A, 1 на B (пока у T нет плэнтов)
+// CT-боты: 1 mid, 2 на A, 2 на B
 function createTeams() {
     for (const b of tBots) b.die();
     for (const b of ctBots) b.die();
     tBots = [];
     ctBots = [];
 
-    for (let i = 0; i < 4; i++) {
-        const off = [
-            { x: -4, z: 3 }, { x: 4, z: 3 },
-            { x: -6, z: -3 }, { x: 6, z: -3 }
-        ][i];
-        tBots.push(new Enemy(scene, 'T', { x: spawnT.x + off.x, z: spawnT.z + off.z }));
+    // T-союзники — вокруг spawnT
+    const tRoles = [
+        { role: 'mid', offset: { x: -4, z: 3 } },
+        { role: 'A',   offset: { x: 4,  z: 3 } },
+        { role: 'A',   offset: { x: 6,  z: 0 } },
+        { role: 'B',   offset: { x: -6, z: 0 } }
+    ];
+    for (const r of tRoles) {
+        tBots.push(new Enemy(scene, 'T', {
+            x: spawnT.x + r.offset.x,
+            z: spawnT.z + r.offset.z
+        }, r.role));
     }
 
-    for (let i = 0; i < 5; i++) {
-        const angle = (i / 5) * Math.PI * 2;
-        const r = 5;
-        ctBots.push(new Enemy(scene, 'CT', {
-            x: spawnCT.x + Math.cos(angle) * r,
-            z: spawnCT.z + Math.sin(angle) * r
-        }));
+    // CT-боты — распределены по карте: 1 mid, 2 A, 2 B
+    const ctRoles = [
+        { role: 'mid', pos: { x: 0,    z: -20 } },
+        { role: 'A',   pos: { x: 60,   z: -60 } },   // около A
+        { role: 'A',   pos: { x: 75,   z: -70 } },
+        { role: 'B',   pos: { x: -50,  z: -50 } },   // около B
+        { role: 'B',   pos: { x: -65,  z: -40 } }
+    ];
+    for (const r of ctRoles) {
+        ctBots.push(new Enemy(scene, 'CT', r.pos, r.role));
     }
 }
 
 function resetRound() {
-    // Сброс бомбы
     if (currentBomb) {
         currentBomb.destroy();
         currentBomb = null;
@@ -252,13 +299,12 @@ function resetRound() {
     bombExploded = false;
     bombDefused = false;
     hideBombHud();
+    hideCompass();
 
-    // Сброс игрока
     player.hp = player.maxHp;
     player.alive = true;
     player.mesh.position.set(spawnT.x, 0, spawnT.z);
 
-    // Сброс ботов
     for (const b of tBots) b.die();
     for (const b of ctBots) b.die();
     tBots = [];
@@ -267,7 +313,7 @@ function resetRound() {
     round.roundTimer = round.roundDuration;
 }
 
-// === BOMB PLACEMENT ===
+// === BOMB ===
 function tryPlaceBomb() {
     if (!player.alive || !round.isPlaying()) return;
     if (bombPlanted) {
@@ -294,25 +340,19 @@ function tryPlaceBomb() {
         return;
     }
 
-    // Ставим бомбу
     bombPlanted = true;
     const bombPos = new THREE.Vector3(nearestPlant.x, 0, nearestPlant.z);
     currentBomb = new Bomb(scene, bombPos, () => {
-        // Взрыв
         bombExploded = true;
         audio.stopBombTick();
         audio.bombExplode();
-        setTimeout(() => {
-            round.endRound('T', 'bomb_exploded');
-        }, 300);
+        setTimeout(() => round.endRound('T', 'bomb_exploded'), 300);
     });
     currentBomb.onDefused = () => {
         bombDefused = true;
         audio.stopDisarm();
         audio.bombDefused();
-        setTimeout(() => {
-            round.endRound('CT', 'bomb_defused');
-        }, 300);
+        setTimeout(() => round.endRound('CT', 'bomb_defused'), 300);
     };
 
     audio.bombPlaced();
@@ -321,13 +361,9 @@ function tryPlaceBomb() {
     showBombHud();
 }
 
-// === HAMMER / DEFUSE ===
 function tryHammer() {
     if (!player.alive) return;
     audio.uiClick();
-
-    // Если есть бомба и игрок рядом — это разминирование (упрощённо, за CT)
-    // Но игрок — за T, так что это "удар"
     showBanner('🔨 Удар!', '#FFFFFF', 0.5);
 }
 
@@ -342,6 +378,16 @@ function updateCamera() {
     camera.lookAt(t.x, 0, t.z);
 }
 
+// === УРОН ИГРОКУ (визуал) ===
+let damageFlashTimer = null;
+function flashDamage() {
+    damageFlashEl.classList.add('flash');
+    clearTimeout(damageFlashTimer);
+    damageFlashTimer = setTimeout(() => {
+        damageFlashEl.classList.remove('flash');
+    }, 120);
+}
+
 // === MAIN LOOP ===
 const clock = new THREE.Clock();
 
@@ -353,26 +399,28 @@ function animate() {
     const collisionRef = USE_COLLISION ? collision : null;
     const playing = round.isPlaying();
 
-    // Игрок
     const prevPos = player.mesh.position.clone();
+    const prevHp = player.hp;
     if (playing) player.update(dt, joystick.direction, collisionRef);
+
+    // HP изменилось — вспышка
+    if (player.hp < prevHp) flashDamage();
 
     const moved = prevPos.distanceTo(player.mesh.position) > 0.05;
     if (moved && playing) audio.footstep();
 
-    // === БОМБА ===
+    // Бомба
     if (currentBomb && currentBomb.alive) {
-        // Список всех игроков рядом с бомбой (для проверки, что CT не ушёл)
         const nearby = [];
         if (player.alive) nearby.push(player.mesh.position);
-
         currentBomb.update(dt, nearby);
         updateBombHud();
+        updateCompass();
     }
 
-    // === СТРЕЛЬБА ИГРОКА ===
     const allBots = [...tBots, ...ctBots];
 
+    // Стрельба игрока
     if (player.alive && playing) {
         const enemiesForPlayer = ctBots.filter(b => b.alive);
         const target = combat.findNearestTarget(player.mesh.position, enemiesForPlayer, player.attackRange);
@@ -391,7 +439,7 @@ function animate() {
         }
     }
 
-    // === СТРЕЛЬБА БОТОВ ===
+    // Боты
     if (playing) {
         const hasLOS = collision ? (a, b) => collision.hasLineOfSight(a, b) : () => true;
         for (const bot of tBots) {
@@ -416,17 +464,19 @@ function animate() {
         }
     }
 
-    combat.update(dt, [...ctBots, ...tBots], player);
+    // Пули — УРОН 15 ИГРОКУ
+    combat.update(dt, [...ctBots, ...tBots], player, (damage) => {
+        // колбэк при уроне игроку
+        flashDamage();
+    });
 
-    // === ПРОВЕРКА КОНЦА РАУНДА ===
+    // Проверка конца раунда
     const aliveT = tBots.filter(b => b.alive).length + (player.alive ? 1 : 0);
     const aliveCT = ctBots.filter(b => b.alive).length;
 
-    // Если бомба заложена — раунд не кончается просто по убийству
     if (!bombPlanted) {
         round.update(dt, aliveT, aliveCT);
     } else {
-        // Идёт бомба — только таймер раунда и бомбы
         if (round.isPlaying()) {
             round.roundTimer -= dt;
             if (round.roundTimer <= 0) {
@@ -438,12 +488,11 @@ function animate() {
         }
     }
 
-    // === HUD ===
+    // HUD
     hpEl.textContent = `HP: ${Math.round(player.hp)}`;
     roundTimerEl.textContent = Math.ceil(round.roundTimer);
     roundInfoEl.textContent = `Раунд ${round.roundNumber} / ${round.roundsToWin}`;
 
-    // Кнопка 💣
     if (player.alive && playing && !bombPlanted) {
         const px = player.mesh.position.x;
         const pz = player.mesh.position.z;
@@ -469,14 +518,12 @@ function onResize() {
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 }
-
 window.addEventListener('resize', onResize);
 window.addEventListener('orientationchange', () => {
     setTimeout(onResize, 100);
     setTimeout(onResize, 300);
     setTimeout(onResize, 600);
 });
-
 if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', () => setTimeout(onResize, 50));
 }
