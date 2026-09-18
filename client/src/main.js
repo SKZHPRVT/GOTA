@@ -22,9 +22,27 @@ if (tg) {
     } catch (e) {}
 }
 
+// === Loading Screen ===
+const loadingScreenEl = document.getElementById('loading-screen');
+const loadingBarFill = document.getElementById('loading-bar-fill');
+const loadingTextEl = document.getElementById('loading-text');
+const loadingPercentEl = document.getElementById('loading-percent');
+
+function setLoadingProgress(percent, text) {
+    loadingBarFill.style.width = percent + '%';
+    loadingPercentEl.textContent = Math.round(percent) + '%';
+    if (text) loadingTextEl.textContent = text;
+}
+
+function hideLoadingScreen() {
+    loadingScreenEl.classList.add('hide');
+    setTimeout(() => {
+        loadingScreenEl.style.display = 'none';
+    }, 600);
+}
+
 // === AUDIO ===
 const audio = new AudioManager();
-audio.preloadAll();
 document.addEventListener('touchstart', () => audio.unlock());
 document.addEventListener('click', () => audio.unlock());
 
@@ -72,12 +90,10 @@ const abilityBombEl = document.getElementById('ability-1');
 const abilityHammerEl = document.getElementById('ability-2');
 const damageFlashEl = document.getElementById('damage-flash');
 
-// Compass
 const compassEl = document.getElementById('bomb-compass');
 const compassArrowEl = document.getElementById('compass-arrow');
 const compassDistEl = document.getElementById('compass-distance');
 
-// Bomb HUD
 const bombHudEl = document.getElementById('bomb-hud');
 const bombTimerEl = document.getElementById('bomb-timer');
 const bombStatusEl = document.getElementById('bomb-status');
@@ -156,7 +172,6 @@ function updateScore(sT, sCT) {
     scoreCTEl.textContent = `CT ${sCT}`;
 }
 
-// === BOMB HUD ===
 function showBombHud() {
     bombHudEl.classList.add('show');
     defuseBarEl.classList.remove('show');
@@ -185,7 +200,6 @@ function updateBombHud() {
     }
 }
 
-// === КОМПАС на бомбу ===
 function updateCompass() {
     if (!currentBomb || !player || !player.alive) {
         hideCompass();
@@ -196,25 +210,33 @@ function updateCompass() {
     const dz = currentBomb.position.z - player.mesh.position.z;
     const dist = Math.hypot(dx, dz);
 
-    // Угол от игрока до бомбы (мировые координаты)
-    const angleToBomb = Math.atan2(dx, dz); // 0 = вперёд (Z+), π/2 = вправо (X+)
+    const angleToBomb = Math.atan2(dx, dz);
+    const playerAngle = player.mesh.rotation.y - Math.PI;
+    const relAngle = angleToBomb - playerAngle;
 
-    // Поворот игрока (куда смотрит)
-    const playerAngle = player.mesh.rotation.y - Math.PI; // корректировка на +PI (внутри faceTarget)
-
-    // Относительный угол: стрелка показывает направление
-    let relAngle = angleToBomb - playerAngle;
-
-    // Переводим в градусы
     const deg = relAngle * 180 / Math.PI;
 
     compassArrowEl.style.transform = `rotate(${deg}deg)`;
     compassDistEl.textContent = `${Math.round(dist)}м`;
 }
 
-// === INIT ===
+// === INIT с прелоадером ===
 async function initGame() {
+    // 1. Звуки
+    setLoadingProgress(0, 'Загрузка звуков...');
+
+    await audio.preloadAll((done, total, name) => {
+        const p = (done / total) * 70;
+        setLoadingProgress(p, `Звук: ${name} (${done}/${total})`);
+    });
+
+    // 2. Карта
+    setLoadingProgress(70, 'Загрузка карты...');
+
     const { arena, colliders, data } = await createArena();
+
+    setLoadingProgress(90, 'Создание сцены...');
+
     scene.add(arena);
     collision = new CollisionSystem(colliders);
     combat = new CombatSystem(scene);
@@ -229,7 +251,7 @@ async function initGame() {
 
     createTeams();
 
-    // Кнопка 💣
+    // Кнопки
     abilityBombEl.addEventListener('touchstart', (e) => {
         e.preventDefault();
         tryPlaceBomb();
@@ -239,7 +261,6 @@ async function initGame() {
         tryPlaceBomb();
     });
 
-    // Кнопка 🔨
     abilityHammerEl.addEventListener('touchstart', (e) => {
         e.preventDefault();
         tryHammer();
@@ -250,20 +271,23 @@ async function initGame() {
     });
 
     camera.position.set(spawnT.x, 45, spawnT.z + 35);
-    setTimeout(() => round.start(), 500);
-    animate();
+
+    setLoadingProgress(100, 'Готово!');
+
+    // 3. Стартуем игру
+    setTimeout(() => {
+        hideLoadingScreen();
+        round.start();
+        animate();
+    }, 400);
 }
 
-// === СОЗДАНИЕ КОМАНД ===
-// T-боты: 1 mid, 2 на A, 1 на B (пока у T нет плэнтов)
-// CT-боты: 1 mid, 2 на A, 2 на B
 function createTeams() {
     for (const b of tBots) b.die();
     for (const b of ctBots) b.die();
     tBots = [];
     ctBots = [];
 
-    // T-союзники — вокруг spawnT
     const tRoles = [
         { role: 'mid', offset: { x: -4, z: 3 } },
         { role: 'A',   offset: { x: 4,  z: 3 } },
@@ -277,12 +301,11 @@ function createTeams() {
         }, r.role));
     }
 
-    // CT-боты — распределены по карте: 1 mid, 2 A, 2 B
     const ctRoles = [
         { role: 'mid', pos: { x: 0,    z: -20 } },
-        { role: 'A',   pos: { x: 60,   z: -60 } },   // около A
+        { role: 'A',   pos: { x: 60,   z: -60 } },
         { role: 'A',   pos: { x: 75,   z: -70 } },
-        { role: 'B',   pos: { x: -50,  z: -50 } },   // около B
+        { role: 'B',   pos: { x: -50,  z: -50 } },
         { role: 'B',   pos: { x: -65,  z: -40 } }
     ];
     for (const r of ctRoles) {
@@ -313,7 +336,6 @@ function resetRound() {
     round.roundTimer = round.roundDuration;
 }
 
-// === BOMB ===
 function tryPlaceBomb() {
     if (!player.alive || !round.isPlaying()) return;
     if (bombPlanted) {
@@ -367,7 +389,6 @@ function tryHammer() {
     showBanner('🔨 Удар!', '#FFFFFF', 0.5);
 }
 
-// === CAMERA ===
 const cameraOffset = { y: 45, z: 35 };
 function updateCamera() {
     if (!player) return;
@@ -378,7 +399,6 @@ function updateCamera() {
     camera.lookAt(t.x, 0, t.z);
 }
 
-// === УРОН ИГРОКУ (визуал) ===
 let damageFlashTimer = null;
 function flashDamage() {
     damageFlashEl.classList.add('flash');
@@ -388,7 +408,6 @@ function flashDamage() {
     }, 120);
 }
 
-// === MAIN LOOP ===
 const clock = new THREE.Clock();
 
 function animate() {
@@ -403,13 +422,11 @@ function animate() {
     const prevHp = player.hp;
     if (playing) player.update(dt, joystick.direction, collisionRef);
 
-    // HP изменилось — вспышка
     if (player.hp < prevHp) flashDamage();
 
     const moved = prevPos.distanceTo(player.mesh.position) > 0.05;
     if (moved && playing) audio.footstep();
 
-    // Бомба
     if (currentBomb && currentBomb.alive) {
         const nearby = [];
         if (player.alive) nearby.push(player.mesh.position);
@@ -420,7 +437,6 @@ function animate() {
 
     const allBots = [...tBots, ...ctBots];
 
-    // Стрельба игрока
     if (player.alive && playing) {
         const enemiesForPlayer = ctBots.filter(b => b.alive);
         const target = combat.findNearestTarget(player.mesh.position, enemiesForPlayer, player.attackRange);
@@ -439,7 +455,6 @@ function animate() {
         }
     }
 
-    // Боты
     if (playing) {
         const hasLOS = collision ? (a, b) => collision.hasLineOfSight(a, b) : () => true;
         for (const bot of tBots) {
@@ -464,13 +479,8 @@ function animate() {
         }
     }
 
-    // Пули — УРОН 15 ИГРОКУ
-    combat.update(dt, [...ctBots, ...tBots], player, (damage) => {
-        // колбэк при уроне игроку
-        flashDamage();
-    });
+    combat.update(dt, [...ctBots, ...tBots], player, () => flashDamage());
 
-    // Проверка конца раунда
     const aliveT = tBots.filter(b => b.alive).length + (player.alive ? 1 : 0);
     const aliveCT = ctBots.filter(b => b.alive).length;
 
@@ -488,7 +498,6 @@ function animate() {
         }
     }
 
-    // HUD
     hpEl.textContent = `HP: ${Math.round(player.hp)}`;
     roundTimerEl.textContent = Math.ceil(round.roundTimer);
     roundInfoEl.textContent = `Раунд ${round.roundNumber} / ${round.roundsToWin}`;
@@ -512,7 +521,6 @@ function animate() {
     renderer.render(scene, camera);
 }
 
-// === RESIZE ===
 function onResize() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
@@ -534,4 +542,5 @@ window.addEventListener('keydown', (e) => {
     }
 });
 
+// Запуск
 initGame();

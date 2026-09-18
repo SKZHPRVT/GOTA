@@ -19,15 +19,15 @@ const SOUNDS = {
 };
 
 const DEFAULT_VOLUMES = {
-    shoot:          0.11,   // было 0.14 → −21%
+    shoot:          0.11,
     footstep:       0.08,
     freezeEnd:      0.70,
     roundStart:     0.65,
-    roundMusic:     0.13,   // было 0.15 → −13%
+    roundMusic:     0.13,
     winT:           0.75,
     winCT:          0.75,
     bombPlaced:     1.00,
-    bombTick:       1.00,   // было 0.90 → громче
+    bombTick:       1.00,
     bombDefused:    0.75,
     c4Disarm:       0.70,
     bombExplode:    0.85,
@@ -116,19 +116,24 @@ export class AudioManager {
         }
     }
 
-    async preloadAll() {
+    // === С колбэком прогресса ===
+    async preloadAll(onProgress) {
         console.log('[audio] preloading...');
-        const promises = [];
-        for (const [name, url] of Object.entries(SOUNDS)) {
-            promises.push(
-                loadSound(name, url).then((ok) => {
-                    this.loaded[name] = ok;
-                })
-            );
-        }
+        const entries = Object.entries(SOUNDS);
+        const total = entries.length;
+        let done = 0;
+
+        const promises = entries.map(([name, url]) =>
+            loadSound(name, url).then((ok) => {
+                this.loaded[name] = ok;
+                done++;
+                if (onProgress) onProgress(done, total, name);
+            })
+        );
+
         await Promise.all(promises);
         const count = Object.values(this.loaded).filter(v => v).length;
-        console.log('[audio] loaded', count, '/', Object.keys(SOUNDS).length);
+        console.log('[audio] loaded', count, '/', total);
         for (const [name, ok] of Object.entries(this.loaded)) {
             if (!ok) console.warn('[audio] NOT LOADED:', name);
         }
