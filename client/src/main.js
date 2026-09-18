@@ -121,12 +121,12 @@ async function init() {
 
     console.log('[main] enemies spawned:', enemies.length);
 
-    camera.position.set(spawnT.x, 90, spawnT.z + 70);
+    camera.position.set(spawnT.x, 45, spawnT.z + 35);
 
     animate();
 }
 
-const cameraOffset = { y: 90, z: 70 };
+const cameraOffset = { y: 45, z: 35 };
 function updateCamera() {
     if (!player) return;
     const t = player.mesh.position;
