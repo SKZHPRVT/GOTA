@@ -44,9 +44,11 @@ export class Enemy {
         this.goalPos = { x: position.x, z: position.z };
         this.isFrozen = true;
 
-        this.stuckTimer = 0;
-        this.sideStepDir = 0;
-        this.sideStepTimer = 0;
+        // Для обхода стен
+        this.detourTarget = null;   // временная цель обхода
+        this.detourTimer = 0;       // сколько осталось идти к detourTarget
+        this.lastStuckCheck = { x: 0, z: 0 };
+        this.stuckTime = 0;
 
         const isT = team === 'T';
         const colors = isT
@@ -164,7 +166,12 @@ export class Enemy {
         this.animTime = 0;
     }
 
-    setGoal(x, z) { this.goalPos = { x, z }; }
+    setGoal(x, z) {
+        this.goalPos = { x, z };
+        this.detourTarget = null;
+        this.detourTimer = 0;
+    }
+
     unfreeze() { this.isFrozen = false; }
 
     findTarget(enemyList, playerPos, playerAlive) {
@@ -238,14 +245,81 @@ export class Enemy {
             }
         }
 
-        const distToGoal = Math.hypot(
-            this.goalPos.x - this.mesh.position.x,
-            this.goalPos.z - this.mesh.position.z
+        // Идём к detourTarget (если есть) или к цели
+        const actualTarget = this.detourTarget || this.goalPos;
+        const distToActual = Math.hypot(
+            actualTarget.x - this.mesh.position.x,
+            actualTarget.z - this.mesh.position.z
         );
-        if (distToGoal > 2) {
-            this.moveTo(this.goalPos, dt, collision);
+
+        if (this.detourTarget && distToActual < 3) {
+            // Дошли до точки обхода — сбрасываем
+            this.detourTarget = null;
         }
 
+        const finalTarget = this.detourTarget || this.goalPos;
+        const distFinal = Math.hypot(
+            finalTarget.x - this.mesh.position.x,
+            finalTarget.z - this.mesh.position.z
+        );
+
+        if (distFinal > 2) {
+            this.moveTo(finalTarget, dt, collision);
+        }
+
+        return null;
+    }
+
+    // Проверка прямой видимости до цели (без препятствий на пути)
+    hasClearPath(targetPos, collision) {
+        if (!collision) return true;
+        const dx = targetPos.x - this.mesh.position.x;
+        const dz = targetPos.z - this.mesh.position.z;
+        const dist = Math.hypot(dx, dz);
+        if (dist < 0.1) return true;
+
+        const steps = Math.ceil(dist / 1.0);
+        const stepX = dx / steps;
+        const stepZ = dz / steps;
+
+        let x = this.mesh.position.x;
+        let z = this.mesh.position.z;
+
+        for (let i = 1; i < steps; i++) {
+            x += stepX;
+            z += stepZ;
+            if (!collision.canMoveTo(x, z)) return false;
+        }
+        return true;
+    }
+
+    // Поиск точки обхода: пробуем ±45°, ±90°, ±135°, 180° от направления к цели
+    findDetourPoint(targetPos, collision) {
+        if (!collision) return null;
+
+        const dx = targetPos.x - this.mesh.position.x;
+        const dz = targetPos.z - this.mesh.position.z;
+        const targetAngle = Math.atan2(dx, dz);
+
+        // Пробуем разные углы на разном расстоянии
+        const angles = [Math.PI/4, -Math.PI/4, Math.PI/2, -Math.PI/2, 3*Math.PI/4, -3*Math.PI/4, Math.PI];
+        const distances = [6, 10, 14];
+
+        for (const dist of distances) {
+            for (const angleOffset of angles) {
+                const tryAngle = targetAngle + angleOffset;
+                const tx = this.mesh.position.x + Math.sin(tryAngle) * dist;
+                const tz = this.mesh.position.z + Math.cos(tryAngle) * dist;
+
+                // Точка свободна?
+                if (!collision.canMoveTo(tx, tz)) continue;
+
+                // Есть ли путь от текущей позиции до этой точки?
+                if (!this.hasClearPath({ x: tx, z: tz }, collision)) continue;
+
+                return { x: tx, z: tz };
+            }
+        }
         return null;
     }
 
@@ -260,39 +334,20 @@ export class Enemy {
         const prevX = this.mesh.position.x;
         const prevZ = this.mesh.position.z;
 
-        // Если идём боком
-        if (this.sideStepTimer > 0) {
-            this.sideStepTimer -= dt;
+        // Проверяем, есть ли прямой путь
+        const targetIsGoal = (targetPos === this.goalPos ||
+                              (Math.abs(targetPos.x - this.goalPos.x) < 0.1 &&
+                               Math.abs(targetPos.z - this.goalPos.z) < 0.1));
 
-            const targetAngle = Math.atan2(to.x, to.z);
-            const sideAngle = targetAngle + this.sideStepDir * Math.PI / 2;
-
-            const sideDir = new THREE.Vector3(
-                Math.sin(sideAngle), 0, Math.cos(sideAngle)
-            ).multiplyScalar(this.speed * dt);
-
-            const res = collision
-                ? collision.resolveMove(prevX, prevZ, sideDir.x, sideDir.z)
-                : { x: prevX + sideDir.x, z: prevZ + sideDir.z };
-
-            this.mesh.position.x = res.x;
-            this.mesh.position.z = res.z;
-
-            const actualX = this.mesh.position.x - prevX;
-            const actualZ = this.mesh.position.z - prevZ;
-
-            if (Math.hypot(actualX, actualZ) > 0.001) {
-                const moveAngle = Math.atan2(actualX, actualZ);
-                this.mesh.rotation.y = moveAngle + Math.PI;
+        if (collision && targetIsGoal && !this.detourTarget && !this.hasClearPath(targetPos, collision)) {
+            // Путь к цели заблокирован — ищем точку обхода
+            const detour = this.findDetourPoint(targetPos, collision);
+            if (detour) {
+                this.detourTarget = detour;
+                this.detourTimer = 3.0;
+                // Двигаемся к detour-точке
+                return this.moveTo(detour, dt, collision);
             }
-
-            this.animTime += dt * 10;
-            const swing = Math.sin(this.animTime) * 0.5;
-            this.legL.rotation.x = swing;
-            this.legR.rotation.x = -swing;
-            this.armL.rotation.x = -swing * 0.7;
-            this.armR.rotation.x = swing * 0.7;
-            return null;
         }
 
         // Обычное движение к цели
@@ -310,35 +365,6 @@ export class Enemy {
         const actualX = this.mesh.position.x - prevX;
         const actualZ = this.mesh.position.z - prevZ;
         const movedDist = Math.hypot(actualX, actualZ);
-        const expectedDist = Math.hypot(moveDir.x, moveDir.z);
-
-        if (movedDist < expectedDist * 0.5) {
-            this.stuckTimer += dt;
-
-            if (this.stuckTimer > 0.15 && this.sideStepDir === 0) {
-                const targetAngle = Math.atan2(to.x, to.z);
-                const leftAngle = targetAngle + Math.PI / 2;
-                const rightAngle = targetAngle - Math.PI / 2;
-
-                const leftX = prevX + Math.sin(leftAngle) * 1.5;
-                const leftZ = prevZ + Math.cos(leftAngle) * 1.5;
-                const rightX = prevX + Math.sin(rightAngle) * 1.5;
-                const rightZ = prevZ + Math.cos(rightAngle) * 1.5;
-
-                const leftFree = !collision || collision.canMoveTo(leftX, leftZ);
-                const rightFree = !collision || collision.canMoveTo(rightX, rightZ);
-
-                if (leftFree) this.sideStepDir = 1;
-                else if (rightFree) this.sideStepDir = -1;
-                else this.sideStepDir = 1;
-
-                this.sideStepTimer = 1.5;
-                this.stuckTimer = 0;
-            }
-        } else {
-            this.stuckTimer = 0;
-            if (this.sideStepTimer <= 0) this.sideStepDir = 0;
-        }
 
         if (movedDist > 0.001) {
             const moveAngle = Math.atan2(actualX, actualZ);
