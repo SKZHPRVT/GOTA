@@ -8,7 +8,7 @@ import { CollisionSystem } from './game/collision.js';
 import { RoundManager } from './game/round.js';
 import { AudioManager } from './game/audio.js';
 
-// === Telegram базовое ===
+// === Telegram ===
 const tg = window.Telegram?.WebApp;
 if (tg) {
     try {
@@ -24,10 +24,8 @@ if (tg) {
 // === AUDIO ===
 const audio = new AudioManager();
 audio.preloadAll();
-
-// Разблокировка на iOS — при первом тапе
-document.addEventListener('touchstart', () => audio.unlock(), { once: true });
-document.addEventListener('click', () => audio.unlock(), { once: true });
+document.addEventListener('touchstart', () => audio.unlock());
+document.addEventListener('click', () => audio.unlock());
 
 // === Debug ===
 const showDebug = new URLSearchParams(window.location.search).get('debug') === '1';
@@ -47,22 +45,6 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
-
-if (showDebug) {
-    const debugEl = document.createElement('div');
-    debugEl.style.cssText = `
-        position: fixed; top: 80px; right: 10px;
-        background: rgba(0,0,0,0.75); color: #0f0;
-        font-size: 11px; padding: 6px 10px;
-        border-radius: 6px; z-index: 60;
-        font-family: monospace; pointer-events: none;
-        white-space: pre; line-height: 1.4;
-    `;
-    document.body.appendChild(debugEl);
-    setInterval(() => {
-        debugEl.textContent = `win: ${window.innerWidth}×${window.innerHeight}\norient: ${screen.orientation?.type || '?'}`;
-    }, 1000);
-}
 
 scene.add(new THREE.AmbientLight(0xFFF0D0, 0.85));
 const sun = new THREE.DirectionalLight(0xFFE8B0, 1.2);
@@ -90,6 +72,37 @@ const bannerEl = document.getElementById('banner');
 const abilityBombEl = document.getElementById('ability-1');
 const abilityHammerEl = document.getElementById('ability-2');
 
+// === DEBUG-панель на экране (внизу слева) ===
+const debugBombEl = document.createElement('div');
+debugBombEl.style.cssText = `
+    position: fixed;
+    bottom: 200px;
+    left: 30px;
+    background: rgba(0,0,0,0.75);
+    color: #0f0;
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    z-index: 50;
+    font-family: monospace;
+    pointer-events: none;
+    white-space: pre;
+    line-height: 1.4;
+`;
+document.body.appendChild(debugBombEl);
+
+let debugBombMsg = '';
+function logBomb(msg) {
+    debugBombMsg = msg;
+    debugBombEl.textContent = msg;
+    console.log('[bomb]', msg);
+    clearTimeout(logBomb._t);
+    logBomb._t = setTimeout(() => {
+        debugBombEl.textContent = '';
+    }, 4000);
+}
+
+// === Игровое состояние ===
 let player;
 let tBots = [];
 let ctBots = [];
@@ -109,7 +122,6 @@ const round = new RoundManager({
     onRoundStart: (n) => {
         showBanner(`Раунд ${n}`, '#FFD24A', 1.5);
         resetRound();
-        // Звуки старта раунда
         audio.freezeEnd();
         setTimeout(() => {
             audio.roundStart();
@@ -123,7 +135,6 @@ const round = new RoundManager({
         const text = winner === 'T' ? 'Победа T!' : 'Победа CT!';
         showBanner(text, color, 2);
         updateScore(sT, sCT);
-        // Звук победы
         if (winner === 'T') audio.winT();
         else audio.winCT();
     },
@@ -162,15 +173,30 @@ async function initGame() {
     spawnCT = data.spawns?.CT || spawnCT;
     plants = data.plants || [];
 
+    console.log('[main] plants:', plants);
+
     player = new Player(scene, 'T', spawnT);
     window.player = player;
 
     createTeams();
 
-    abilityBombEl.addEventListener('touchstart', (e) => { e.preventDefault(); tryPlaceBomb(); });
-    abilityBombEl.addEventListener('click', () => tryPlaceBomb());
-    abilityHammerEl.addEventListener('touchstart', (e) => { e.preventDefault(); tryHammer(); });
-    abilityHammerEl.addEventListener('click', () => tryHammer());
+    abilityBombEl.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        tryPlaceBomb();
+    }, { passive: false });
+    abilityBombEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        tryPlaceBomb();
+    });
+
+    abilityHammerEl.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        tryHammer();
+    }, { passive: false });
+    abilityHammerEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        tryHammer();
+    });
 
     camera.position.set(spawnT.x, 45, spawnT.z + 35);
     setTimeout(() => round.start(), 500);
@@ -214,23 +240,51 @@ function resetRound() {
 }
 
 function tryPlaceBomb() {
-    if (!player.alive || !round.isPlaying()) return;
-    audio.uiClick();
+    // Диагностика
     const px = player.mesh.position.x;
     const pz = player.mesh.position.z;
-    let nearPlant = null;
-    for (const p of plants) {
-        const d = Math.hypot(px - p.x, pz - p.z);
-        if (d < 10) { nearPlant = p; break; }
-    }
-    if (!nearPlant) {
-        audio.uiError();
-        showBanner('Не на плэнте!', '#FF6666', 1);
+    logBomb(`POS: ${px.toFixed(1)}, ${pz.toFixed(1)}\nAlive: ${player.alive}\nPlaying: ${round.isPlaying()}\nPlants: ${plants.length}`);
+
+    if (!player.alive) {
+        logBomb('Игрок мёртв');
         return;
     }
+    if (!round.isPlaying()) {
+        logBomb('Раунд не идёт');
+        return;
+    }
+
+    audio.uiClick();
+
+    let nearestPlant = null;
+    let nearestDist = Infinity;
+    for (const p of plants) {
+        const d = Math.hypot(px - p.x, pz - p.z);
+        if (d < nearestDist) {
+            nearestDist = d;
+            nearestPlant = p;
+        }
+    }
+
+    if (!nearestPlant) {
+        logBomb('Нет плэнтов');
+        audio.uiError();
+        return;
+    }
+
+    logBomb(`Ближайший плэнт: ${nearestPlant.id}\nДистанция: ${nearestDist.toFixed(1)}\nРадиус: 20`);
+
+    if (nearestDist > 20) {
+        audio.uiError();
+        showBanner(`Далеко от ${nearestPlant.id}!`, '#FF6666', 1.5);
+        return;
+    }
+
+    // Успешно!
     audio.bombPlaced();
     audio.startBombTick();
-    showBanner(`💣 Бомба на ${nearPlant.id}!`, '#FFD24A', 2);
+    showBanner(`💣 Бомба на ${nearestPlant.id}!`, '#FFD24A', 2);
+    logBomb(`✓ Бомба на ${nearestPlant.id}!`);
 }
 
 function tryHammer() {
@@ -262,7 +316,6 @@ function animate() {
     const prevPos = player.mesh.position.clone();
     if (playing) player.update(dt, joystick.direction, collisionRef);
 
-    // Шаги — если игрок сдвинулся
     const moved = prevPos.distanceTo(player.mesh.position) > 0.05;
     if (moved && playing) audio.footstep();
 
@@ -322,9 +375,11 @@ function animate() {
         const px = player.mesh.position.x;
         const pz = player.mesh.position.z;
         let nearPlant = false;
+        let nearestDist = Infinity;
         for (const p of plants) {
             const d = Math.hypot(px - p.x, pz - p.z);
-            if (d < 10) { nearPlant = true; break; }
+            if (d < nearestDist) nearestDist = d;
+            if (d < 20) { nearPlant = true; break; }
         }
         abilityBombEl.classList.toggle('active', nearPlant);
         abilityBombEl.classList.toggle('inactive', !nearPlant);

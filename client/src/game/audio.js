@@ -29,8 +29,8 @@ const SOUNDS = {
 
 // Громкость по умолчанию
 const DEFAULT_VOLUMES = {
-    shoot:          0.35,
-    footstep:       0.20,
+    shoot:          0.18,
+    footstep:       0.10,
     freezeEnd:      0.8,
     roundStart:     0.7,
     roundMusic:     0.25,   // фон тише
@@ -74,7 +74,7 @@ export class AudioManager {
         this.masterVolume = 0.7;
         this.loaded = {};
         this.lastFootstep = 0;
-        this.footstepInterval = 0.4;   // каждые 0.4 сек — шаг
+        this.footstepInterval = 0.55;   // каждые 0.4 сек — шаг
 
         // Длинные звуки — играем один раз, не клонируем
         this.longSounds = ['roundMusic', 'bombTick'];

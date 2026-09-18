@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 const SPEED = 20;
 const ATTACK_RANGE = 20;
-const ATTACK_COOLDOWN = 0.4;
+const ATTACK_COOLDOWN = 0.8;
 const SCALE = 1.5; // +50%
 
 const toonGradient = (() => {
