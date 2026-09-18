@@ -8,42 +8,6 @@
 
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
-    <script>
-        (function() {
-            var tg = window.Telegram && window.Telegram.WebApp;
-            if (!tg) return;
-
-            console.log('[tg] version:', tg.version, 'platform:', tg.platform);
-
-            try {
-                tg.ready();
-                tg.expand();
-                if (tg.requestFullscreen) tg.requestFullscreen();
-                if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
-                if (tg.setHeaderColor) tg.setHeaderColor('#000000');
-                if (tg.setBackgroundColor) tg.setBackgroundColor('#C2B280');
-            } catch (e) { console.error('[tg init]', e); }
-
-            // Разлочиваем ориентацию — пусть крутится как хочет телефон
-            try {
-                if (tg.unlockOrientation) {
-                    tg.unlockOrientation();
-                    console.log('[tg] orientation unlocked');
-                }
-            } catch (e) { console.warn('[tg] unlock failed', e); }
-
-            // Логи для отладки
-            if (tg.onEvent) {
-                tg.onEvent('fullscreenChanged', function() {
-                    console.log('[tg] fullscreen:', tg.isFullscreen);
-                });
-                tg.onEvent('viewportChanged', function(e) {
-                    console.log('[tg] viewport:', tg.viewportHeight, 'stable:', tg.viewportStableHeight, 'stable?', e.isStateStable);
-                });
-            }
-        })();
-    </script>
-
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -102,6 +66,65 @@
             text-shadow: 1px 1px 2px #000;
             pointer-events: none;
         }
+
+        /* === BOMB HUD === */
+        #bomb-hud {
+            position: fixed;
+            top: calc(100px + var(--content-top));
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 15;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            pointer-events: none;
+        }
+        #bomb-hud.show { display: flex; }
+
+        #bomb-timer {
+            font-size: 48px;
+            font-weight: bold;
+            color: #ff3030;
+            text-shadow: 0 0 20px #ff0000, 3px 3px 6px #000;
+            padding: 8px 24px;
+            background: rgba(0,0,0,0.7);
+            border: 3px solid #ff3030;
+            border-radius: 12px;
+            letter-spacing: 3px;
+            animation: bombPulse 0.5s ease-in-out infinite alternate;
+        }
+        @keyframes bombPulse {
+            from { transform: scale(1); box-shadow: 0 0 20px rgba(255,0,0,0.5); }
+            to { transform: scale(1.05); box-shadow: 0 0 40px rgba(255,0,0,0.9); }
+        }
+
+        #bomb-status {
+            font-size: 16px;
+            font-weight: bold;
+            padding: 4px 16px;
+            background: rgba(0,0,0,0.6);
+            border-radius: 8px;
+            text-shadow: 1px 1px 2px #000;
+        }
+
+        #defuse-bar {
+            width: 240px;
+            height: 16px;
+            background: rgba(0,0,0,0.7);
+            border: 2px solid #fff;
+            border-radius: 8px;
+            overflow: hidden;
+            display: none;
+        }
+        #defuse-bar.show { display: block; }
+        #defuse-bar-fill {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #00cc00, #00ff00);
+            transition: width 0.1s linear;
+        }
+
         #hp-hud {
             position: fixed;
             bottom: calc(20px + var(--content-bottom));
@@ -161,6 +184,11 @@
             box-shadow: 0 0 20px rgba(255,80,80,0.7);
         }
         .ability.inactive { opacity: 0.35; }
+        .ability.defuse {
+            background: rgba(0, 200, 0, 0.5);
+            border-color: #00ff00;
+            box-shadow: 0 0 20px rgba(0,255,0,0.7);
+        }
 
         #banner {
             position: fixed;
@@ -182,6 +210,14 @@
         <span id="score-ct">CT 0</span>
     </div>
     <div id="round-info">Раунд 1 / 5</div>
+
+    <!-- BOMB HUD -->
+    <div id="bomb-hud">
+        <div id="bomb-timer">40</div>
+        <div id="bomb-status">💣 Бомба заложена!</div>
+        <div id="defuse-bar"><div id="defuse-bar-fill"></div></div>
+    </div>
+
     <div id="hp-hud">HP: 100</div>
 
     <div id="joystick">

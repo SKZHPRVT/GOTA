@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { createArena } from './map/arena.js';
 import { Player } from './entities/player.js';
 import { Enemy } from './entities/enemy.js';
+import { Bomb } from './entities/bomb.js';
 import { Joystick } from './ui/joystick.js';
 import { CombatSystem } from './game/combat.js';
 import { CollisionSystem } from './game/collision.js';
@@ -24,7 +25,6 @@ if (tg) {
 // === AUDIO ===
 const audio = new AudioManager();
 audio.preloadAll();
-
 document.addEventListener('touchstart', () => audio.unlock());
 document.addEventListener('click', () => audio.unlock());
 
@@ -57,6 +57,7 @@ sun.shadow.camera.near = 1;
 sun.shadow.camera.far = 500;
 scene.add(sun);
 
+// === UI ===
 const joystick = new Joystick(
     document.getElementById('joystick'),
     document.getElementById('joystick-knob')
@@ -70,33 +71,12 @@ const bannerEl = document.getElementById('banner');
 const abilityBombEl = document.getElementById('ability-1');
 const abilityHammerEl = document.getElementById('ability-2');
 
-// Debug-панель на экране
-const debugBombEl = document.createElement('div');
-debugBombEl.style.cssText = `
-    position: fixed;
-    bottom: 200px;
-    left: 30px;
-    background: rgba(0,0,0,0.75);
-    color: #0f0;
-    font-size: 12px;
-    padding: 6px 10px;
-    border-radius: 6px;
-    z-index: 50;
-    font-family: monospace;
-    pointer-events: none;
-    white-space: pre;
-    line-height: 1.4;
-`;
-document.body.appendChild(debugBombEl);
-
-function logBomb(msg) {
-    debugBombEl.textContent = msg;
-    console.log('[bomb]', msg);
-    clearTimeout(logBomb._t);
-    logBomb._t = setTimeout(() => {
-        debugBombEl.textContent = '';
-    }, 4000);
-}
+// Bomb HUD
+const bombHudEl = document.getElementById('bomb-hud');
+const bombTimerEl = document.getElementById('bomb-timer');
+const bombStatusEl = document.getElementById('bomb-status');
+const defuseBarEl = document.getElementById('defuse-bar');
+const defuseBarFillEl = document.getElementById('defuse-bar-fill');
 
 // === Игровое состояние ===
 let player;
@@ -111,6 +91,13 @@ let spawnCT = { x: -25.5, z: -57 };
 let plants = [];
 let FLOORS = [];
 
+// === БОМБА ===
+let currentBomb = null;      // активная бомба
+let bombPlanted = false;     // бомба заложена
+let bombExploded = false;    // бомба взорвана
+let bombDefused = false;     // бомба разминирована
+
+// === RoundManager ===
 const round = new RoundManager({
     roundsToWin: 5,
     roundDuration: 60,
@@ -127,20 +114,24 @@ const round = new RoundManager({
     onRoundEnd: (winner, reason, sT, sCT) => {
         audio.stopRoundMusic();
         audio.stopBombTick();
+        audio.stopDisarm();
         const color = winner === 'T' ? '#FFD24A' : '#5CA8FF';
-        const text = winner === 'T' ? 'Победа T!' : 'Победа CT!';
+        let text = winner === 'T' ? 'Победа T!' : 'Победа CT!';
+        if (reason === 'bomb_exploded') text = '💥 ВЗРЫВ! T WIN';
+        if (reason === 'bomb_defused') text = '✅ РАЗМИНИРОВАНО! CT WIN';
+        if (reason === 'time') text = '⏰ Время вышло! CT WIN';
         showBanner(text, color, 2);
         updateScore(sT, sCT);
         if (winner === 'T') audio.winT();
         else audio.winCT();
+        hideBombHud();
     },
     onMatchEnd: (winner, sT, sCT) => {
         audio.stopRoundMusic();
         const text = winner === 'T' ? 'МАТЧ: T ПОБЕДА!' : 'МАТЧ: CT ПОБЕДА!';
         const color = winner === 'T' ? '#FFD24A' : '#5CA8FF';
         showBanner(text, color, 999);
-        if (winner === 'T') audio.winT();
-        else audio.winCT();
+        hideBombHud();
     }
 });
 
@@ -158,6 +149,34 @@ function updateScore(sT, sCT) {
     scoreCTEl.textContent = `CT ${sCT}`;
 }
 
+// === BOMB HUD ===
+function showBombHud() {
+    bombHudEl.classList.add('show');
+    defuseBarEl.classList.remove('show');
+}
+
+function hideBombHud() {
+    bombHudEl.classList.remove('show');
+    defuseBarEl.classList.remove('show');
+}
+
+function updateBombHud() {
+    if (!currentBomb) return;
+    bombTimerEl.textContent = Math.ceil(currentBomb.timer);
+    if (currentBomb.isDefusing) {
+        bombStatusEl.textContent = '🔧 РАЗМИНИРОВАНИЕ...';
+        bombStatusEl.style.color = '#00ff00';
+        defuseBarEl.classList.add('show');
+        const p = Math.min(100, (currentBomb.defuseProgress / currentBomb.defuseTime) * 100);
+        defuseBarFillEl.style.width = p + '%';
+    } else {
+        bombStatusEl.textContent = '💣 Бомба заложена!';
+        bombStatusEl.style.color = '#ff3030';
+        defuseBarEl.classList.remove('show');
+    }
+}
+
+// === INIT ===
 async function initGame() {
     const { arena, colliders, data } = await createArena();
     scene.add(arena);
@@ -174,6 +193,7 @@ async function initGame() {
 
     createTeams();
 
+    // Кнопка 💣 — ставит бомбу
     abilityBombEl.addEventListener('touchstart', (e) => {
         e.preventDefault();
         tryPlaceBomb();
@@ -183,6 +203,7 @@ async function initGame() {
         tryPlaceBomb();
     });
 
+    // Кнопка 🔨 — разминирует бомбу (CT-логика) ИЛИ удар по башне (когда не CT)
     abilityHammerEl.addEventListener('touchstart', (e) => {
         e.preventDefault();
         tryHammer();
@@ -222,9 +243,22 @@ function createTeams() {
 }
 
 function resetRound() {
+    // Сброс бомбы
+    if (currentBomb) {
+        currentBomb.destroy();
+        currentBomb = null;
+    }
+    bombPlanted = false;
+    bombExploded = false;
+    bombDefused = false;
+    hideBombHud();
+
+    // Сброс игрока
     player.hp = player.maxHp;
     player.alive = true;
     player.mesh.position.set(spawnT.x, 0, spawnT.z);
+
+    // Сброс ботов
     for (const b of tBots) b.die();
     for (const b of ctBots) b.die();
     tBots = [];
@@ -233,20 +267,16 @@ function resetRound() {
     round.roundTimer = round.roundDuration;
 }
 
+// === BOMB PLACEMENT ===
 function tryPlaceBomb() {
+    if (!player.alive || !round.isPlaying()) return;
+    if (bombPlanted) {
+        showBanner('Бомба уже заложена!', '#FF6666', 1.5);
+        return;
+    }
+
     const px = player.mesh.position.x;
     const pz = player.mesh.position.z;
-
-    if (!player.alive) {
-        logBomb('Игрок мёртв');
-        return;
-    }
-    if (!round.isPlaying()) {
-        logBomb('Раунд не идёт');
-        return;
-    }
-
-    audio.uiClick();
 
     let nearestPlant = null;
     let nearestDist = Infinity;
@@ -258,32 +288,50 @@ function tryPlaceBomb() {
         }
     }
 
-    if (!nearestPlant) {
-        logBomb('Нет плэнтов');
+    if (!nearestPlant || nearestDist > 20) {
         audio.uiError();
+        showBanner('Не на плэнте!', '#FF6666', 1.5);
         return;
     }
 
-    logBomb(`Плэнт: ${nearestPlant.id}\nДист: ${nearestDist.toFixed(1)}`);
-
-    if (nearestDist > 20) {
-        audio.uiError();
-        showBanner(`Далеко от ${nearestPlant.id}!`, '#FF6666', 1.5);
-        return;
-    }
+    // Ставим бомбу
+    bombPlanted = true;
+    const bombPos = new THREE.Vector3(nearestPlant.x, 0, nearestPlant.z);
+    currentBomb = new Bomb(scene, bombPos, () => {
+        // Взрыв
+        bombExploded = true;
+        audio.stopBombTick();
+        audio.bombExplode();
+        setTimeout(() => {
+            round.endRound('T', 'bomb_exploded');
+        }, 300);
+    });
+    currentBomb.onDefused = () => {
+        bombDefused = true;
+        audio.stopDisarm();
+        audio.bombDefused();
+        setTimeout(() => {
+            round.endRound('CT', 'bomb_defused');
+        }, 300);
+    };
 
     audio.bombPlaced();
     audio.startBombTick();
     showBanner(`💣 Бомба на ${nearestPlant.id}!`, '#FFD24A', 2);
-    logBomb(`✓ Бомба на ${nearestPlant.id}!`);
+    showBombHud();
 }
 
+// === HAMMER / DEFUSE ===
 function tryHammer() {
     if (!player.alive) return;
     audio.uiClick();
+
+    // Если есть бомба и игрок рядом — это разминирование (упрощённо, за CT)
+    // Но игрок — за T, так что это "удар"
     showBanner('🔨 Удар!', '#FFFFFF', 0.5);
 }
 
+// === CAMERA ===
 const cameraOffset = { y: 45, z: 35 };
 function updateCamera() {
     if (!player) return;
@@ -294,6 +342,7 @@ function updateCamera() {
     camera.lookAt(t.x, 0, t.z);
 }
 
+// === MAIN LOOP ===
 const clock = new THREE.Clock();
 
 function animate() {
@@ -304,15 +353,26 @@ function animate() {
     const collisionRef = USE_COLLISION ? collision : null;
     const playing = round.isPlaying();
 
+    // Игрок
     const prevPos = player.mesh.position.clone();
     if (playing) player.update(dt, joystick.direction, collisionRef);
 
     const moved = prevPos.distanceTo(player.mesh.position) > 0.05;
     if (moved && playing) audio.footstep();
 
+    // === БОМБА ===
+    if (currentBomb && currentBomb.alive) {
+        // Список всех игроков рядом с бомбой (для проверки, что CT не ушёл)
+        const nearby = [];
+        if (player.alive) nearby.push(player.mesh.position);
+
+        currentBomb.update(dt, nearby);
+        updateBombHud();
+    }
+
+    // === СТРЕЛЬБА ИГРОКА ===
     const allBots = [...tBots, ...ctBots];
 
-    // Игрок стреляет — звук обычный
     if (player.alive && playing) {
         const enemiesForPlayer = ctBots.filter(b => b.alive);
         const target = combat.findNearestTarget(player.mesh.position, enemiesForPlayer, player.attackRange);
@@ -325,14 +385,13 @@ function animate() {
                 if (player.attackTimer <= 0) {
                     player.attackTimer = player.attackCooldown;
                     combat.shoot(fromPos, target, 'T');
-                    // Свой выстрел — всегда слышен
                     audio.shoot();
                 }
             }
         }
     }
 
-    // Выстрелы ботов — ПРОСТРАНСТВЕННЫЕ
+    // === СТРЕЛЬБА БОТОВ ===
     if (playing) {
         const hasLOS = collision ? (a, b) => collision.hasLineOfSight(a, b) : () => true;
         for (const bot of tBots) {
@@ -341,8 +400,6 @@ function animate() {
             if (action?.type === 'shoot') {
                 const fakeTarget = { mesh: { position: action.from.clone().add(action.direction.clone().multiplyScalar(10)) } };
                 combat.shoot(action.from.clone().sub(new THREE.Vector3(0, 1.2, 0)), fakeTarget, 'T');
-
-                // Дистанция от игрока до бота
                 const dist = player.mesh.position.distanceTo(bot.mesh.position);
                 audio.shootSpatial(dist);
             }
@@ -353,7 +410,6 @@ function animate() {
             if (action?.type === 'shoot') {
                 const fakeTarget = { mesh: { position: action.from.clone().add(action.direction.clone().multiplyScalar(10)) } };
                 combat.shoot(action.from.clone().sub(new THREE.Vector3(0, 1.2, 0)), fakeTarget, 'CT');
-
                 const dist = player.mesh.position.distanceTo(bot.mesh.position);
                 audio.shootSpatial(dist);
             }
@@ -362,15 +418,33 @@ function animate() {
 
     combat.update(dt, [...ctBots, ...tBots], player);
 
+    // === ПРОВЕРКА КОНЦА РАУНДА ===
     const aliveT = tBots.filter(b => b.alive).length + (player.alive ? 1 : 0);
     const aliveCT = ctBots.filter(b => b.alive).length;
-    round.update(dt, aliveT, aliveCT);
 
+    // Если бомба заложена — раунд не кончается просто по убийству
+    if (!bombPlanted) {
+        round.update(dt, aliveT, aliveCT);
+    } else {
+        // Идёт бомба — только таймер раунда и бомбы
+        if (round.isPlaying()) {
+            round.roundTimer -= dt;
+            if (round.roundTimer <= 0) {
+                round.roundTimer = 0;
+                round.endRound('CT', 'time');
+            }
+        } else {
+            round.update(dt, aliveT, aliveCT);
+        }
+    }
+
+    // === HUD ===
     hpEl.textContent = `HP: ${Math.round(player.hp)}`;
     roundTimerEl.textContent = Math.ceil(round.roundTimer);
     roundInfoEl.textContent = `Раунд ${round.roundNumber} / ${round.roundsToWin}`;
 
-    if (player.alive && playing) {
+    // Кнопка 💣
+    if (player.alive && playing && !bombPlanted) {
         const px = player.mesh.position.x;
         const pz = player.mesh.position.z;
         let nearPlant = false;
@@ -389,6 +463,7 @@ function animate() {
     renderer.render(scene, camera);
 }
 
+// === RESIZE ===
 function onResize() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
