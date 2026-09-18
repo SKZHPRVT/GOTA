@@ -7,12 +7,59 @@ import { CombatSystem } from './game/combat.js';
 import { CollisionSystem } from './game/collision.js';
 import { RoundManager } from './game/round.js';
 
-// Telegram
+// === Telegram WebApp: ещё раз force-expand (страховка) ===
 const tg = window.Telegram?.WebApp;
 if (tg) {
-    tg.ready();
-    tg.expand();
-    try { tg.lockOrientation && tg.lockOrientation('landscape'); } catch (e) {}
+    try {
+        tg.ready();
+        tg.expand();
+        if (tg.requestFullscreen) tg.requestFullscreen();
+        if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
+        if (tg.lockOrientation) tg.lockOrientation('landscape');
+    } catch (e) {}
+
+    // При изменении viewport — обновляем высоту
+    if (tg.onEvent) {
+        tg.onEvent('viewportChanged', () => {
+            const h = tg.viewportStableHeight || window.innerHeight;
+            document.documentElement.style.height = h + 'px';
+            document.body.style.height = h + 'px';
+        });
+    }
+}
+
+// === Кнопка "Развернуть" — если Telegram не развернул ===
+const expandBtn = document.getElementById('expand-btn');
+if (expandBtn) {
+    const checkExpanded = () => {
+        if (!tg) return;
+        const isExpanded = tg.isExpanded;
+        const h = tg.viewportHeight || window.innerHeight;
+        const stableH = tg.viewportStableHeight || window.innerHeight;
+        // Если окно меньше 80% от экрана — кнопка нужна
+        if (!isExpanded || h < stableH * 0.9) {
+            expandBtn.classList.add('show');
+        } else {
+            expandBtn.classList.remove('show');
+        }
+    };
+
+    expandBtn.addEventListener('click', () => {
+        if (tg) {
+            tg.expand();
+            if (tg.requestFullscreen) tg.requestFullscreen();
+            try { tg.lockOrientation?.('landscape'); } catch (e) {}
+        }
+        setTimeout(checkExpanded, 200);
+    });
+
+    // Проверка каждые 1.5 сек в первые 5 сек
+    let checks = 0;
+    const checkInterval = setInterval(() => {
+        checkExpanded();
+        checks++;
+        if (checks > 3) clearInterval(checkInterval);
+    }, 1500);
 }
 
 // === Сцена ===
@@ -31,7 +78,6 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
-// Свет
 scene.add(new THREE.AmbientLight(0xFFF0D0, 0.85));
 const sun = new THREE.DirectionalLight(0xFFE8B0, 1.2);
 sun.position.set(60, 100, 40);
@@ -45,7 +91,7 @@ sun.shadow.camera.near = 1;
 sun.shadow.camera.far = 500;
 scene.add(sun);
 
-// UI
+// === UI ===
 const joystick = new Joystick(
     document.getElementById('joystick'),
     document.getElementById('joystick-knob')
@@ -56,26 +102,23 @@ const roundTimerEl = document.getElementById('round-timer');
 const roundInfoEl = document.getElementById('round-info');
 const hpEl = document.getElementById('hp-hud');
 const bannerEl = document.getElementById('banner');
-
-// Кнопки способностей
 const abilityBombEl = document.getElementById('ability-1');
 const abilityHammerEl = document.getElementById('ability-2');
 
-// === Игровое состояние ===
+// === Состояние ===
 let player;
-let tBots = [];   // союзники (команда T)
-let ctBots = [];  // враги (команда CT)
+let tBots = [];
+let ctBots = [];
 let combat;
 let collision;
 let USE_COLLISION = true;
 
-// Спавны, плэнты из JSON
 let spawnT = { x: 28.5, z: 45 };
 let spawnCT = { x: -25.5, z: -57 };
 let plants = [];
 let FLOORS = [];
 
-// RoundManager
+// === RoundManager ===
 const round = new RoundManager({
     roundsToWin: 5,
     roundDuration: 60,
@@ -104,9 +147,7 @@ function showBanner(text, color, duration) {
     bannerEl.style.color = color;
     bannerEl.style.display = 'block';
     if (duration < 900) {
-        setTimeout(() => {
-            bannerEl.style.display = 'none';
-        }, duration * 1000);
+        setTimeout(() => { bannerEl.style.display = 'none'; }, duration * 1000);
     }
 }
 
@@ -115,7 +156,7 @@ function updateScore(sT, sCT) {
     scoreCTEl.textContent = `CT ${sCT}`;
 }
 
-// === Инициализация ===
+// === Init ===
 async function init() {
     const { arena, colliders, data } = await createArena();
     scene.add(arena);
@@ -130,45 +171,29 @@ async function init() {
     console.log('[main] spawn T:', spawnT, 'CT:', spawnCT);
     console.log('[main] plants:', plants);
 
-    // Игрок — T-команда
     player = new Player(scene, 'T', spawnT);
     window.player = player;
 
     createTeams();
 
-    // Кнопки способностей
-    abilityBombEl.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        tryPlaceBomb();
-    });
-    abilityBombEl.addEventListener('click', (e) => {
-        tryPlaceBomb();
-    });
-    abilityHammerEl.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        tryHammer();
-    });
-    abilityHammerEl.addEventListener('click', (e) => {
-        tryHammer();
-    });
+    abilityBombEl.addEventListener('touchstart', (e) => { e.preventDefault(); tryPlaceBomb(); });
+    abilityBombEl.addEventListener('click', () => tryPlaceBomb());
+    abilityHammerEl.addEventListener('touchstart', (e) => { e.preventDefault(); tryHammer(); });
+    abilityHammerEl.addEventListener('click', () => tryHammer());
 
-    // Камера
     camera.position.set(spawnT.x, 45, spawnT.z + 35);
 
-    // Старт первого раунда
     setTimeout(() => round.start(), 500);
 
     animate();
 }
 
 function createTeams() {
-    // Убираем старых
     for (const b of tBots) b.die();
     for (const b of ctBots) b.die();
     tBots = [];
     ctBots = [];
 
-    // 4 T-бота (союзники) вокруг spawnT
     for (let i = 0; i < 4; i++) {
         const off = [
             { x: -4, z: 3 }, { x: 4, z: 3 },
@@ -180,7 +205,6 @@ function createTeams() {
         }));
     }
 
-    // 5 CT-ботов вокруг spawnCT
     for (let i = 0; i < 5; i++) {
         const angle = (i / 5) * Math.PI * 2;
         const r = 5;
@@ -192,26 +216,17 @@ function createTeams() {
 }
 
 function resetRound() {
-    // Возрождаем игрока
     player.hp = player.maxHp;
     player.alive = true;
     player.mesh.position.set(spawnT.x, 0, spawnT.z);
-
-    // Убираем старых ботов
     for (const b of tBots) b.die();
     for (const b of ctBots) b.die();
     tBots = [];
     ctBots = [];
-
-    // Расстановка
     createTeams();
-
     round.roundTimer = round.roundDuration;
 }
 
-// === Кнопки ===
-
-// Установить бомбу — только в зоне плэнта
 function tryPlaceBomb() {
     if (!player.alive) return;
     if (!round.isPlaying()) return;
@@ -227,24 +242,19 @@ function tryPlaceBomb() {
 
     if (!nearPlant) {
         showBanner('Не на плэнте!', '#FF6666', 1);
-        console.log('[bomb] not at plant');
         return;
     }
 
     console.log('[bomb] placed at', nearPlant.id);
     showBanner(`💣 Бомба на ${nearPlant.id}!`, '#FFD24A', 2);
-    // TODO: этап 2 — таймер бомбы и логика
 }
 
-// Молоток — удар по башне
 function tryHammer() {
     if (!player.alive) return;
     console.log('[hammer] hit');
     showBanner('🔨 Удар!', '#FFFFFF', 0.5);
-    // TODO: этап 2 — урон башне
 }
 
-// === Камера ===
 const cameraOffset = { y: 45, z: 35 };
 function updateCamera() {
     if (!player) return;
@@ -255,7 +265,6 @@ function updateCamera() {
     camera.lookAt(t.x, 0, t.z);
 }
 
-// === Цикл ===
 const clock = new THREE.Clock();
 let debugTimer = 0;
 
@@ -268,7 +277,6 @@ function animate() {
     const collisionRef = USE_COLLISION ? collision : null;
     const playing = round.isPlaying();
 
-    // Игрок двигается только в раунде
     if (playing) {
         player.update(dt, joystick.direction, collisionRef);
     }
@@ -284,10 +292,8 @@ function animate() {
         );
     }
 
-    // Все боты в одном списке для поиска целей
     const allBots = [...tBots, ...ctBots];
 
-    // Игрок стреляет
     if (player.alive && playing) {
         const enemiesForPlayer = ctBots.filter(b => b.alive);
         const target = combat.findNearestTarget(
@@ -307,7 +313,6 @@ function animate() {
         }
     }
 
-    // Логика T-ботов (союзники)
     if (playing) {
         for (const bot of tBots) {
             if (!bot.alive) continue;
@@ -329,7 +334,6 @@ function animate() {
             }
         }
 
-        // Логика CT-ботов (враги)
         for (const bot of ctBots) {
             if (!bot.alive) continue;
             const hasLOS = collision
@@ -351,20 +355,16 @@ function animate() {
         }
     }
 
-    // Пули
     combat.update(dt, [...ctBots, ...tBots], player);
 
-    // Проверка конца раунда
     const aliveT = tBots.filter(b => b.alive).length + (player.alive ? 1 : 0);
     const aliveCT = ctBots.filter(b => b.alive).length;
     round.update(dt, aliveT, aliveCT);
 
-    // HUD
     hpEl.textContent = `HP: ${Math.round(player.hp)}`;
     roundTimerEl.textContent = Math.ceil(round.roundTimer);
     roundInfoEl.textContent = `Раунд ${round.roundNumber} / ${round.roundsToWin}`;
 
-    // Кнопка бомбы — активна только рядом с плэнтом
     if (player.alive && playing) {
         const px = player.mesh.position.x;
         const pz = player.mesh.position.z;

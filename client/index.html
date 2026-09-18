@@ -7,20 +7,42 @@
     <meta name="x5-orientation" content="landscape">
     <meta name="full-screen" content="yes">
     <title>GOta</title>
+
+    <!-- Форсим Telegram fullscreen ДО загрузки модулей -->
+    <script>
+        (function() {
+            var tg = window.Telegram && window.Telegram.WebApp;
+            if (!tg) return;
+            try {
+                tg.ready();
+                tg.expand();
+                if (tg.requestFullscreen) tg.requestFullscreen();
+                if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
+                if (tg.lockOrientation) tg.lockOrientation('landscape');
+                console.log('[tg-head] expanded, fullscreen requested');
+            } catch (e) {
+                console.error('[tg-head] error:', e);
+            }
+        })();
+    </script>
+
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html, body {
             width: 100%;
             height: 100%;
+            height: 100vh;
+            height: 100dvh;
             overflow: hidden;
             background: #000;
             font-family: 'Courier New', monospace;
             touch-action: none;
             color: #fff;
+            position: fixed;
+            inset: 0;
         }
-        canvas { display: block; }
+        canvas { display: block; width: 100%; height: 100%; }
 
-        /* Джойстик */
         #joystick {
             position: fixed; bottom: 30px; left: 30px;
             width: 140px; height: 140px;
@@ -40,7 +62,6 @@
             pointer-events: none;
         }
 
-        /* HUD сверху */
         #top-hud {
             position: fixed;
             top: 10px;
@@ -58,33 +79,22 @@
             font-weight: bold;
             text-shadow: 1px 1px 2px #000;
         }
-        #score-t { color: #FFD24A; }
-        #score-ct { color: #5CA8FF; }
-        #score-t, #score-ct { font-size: 28px; }
-        #round-info {
-            color: #fff;
-            opacity: 0.9;
-            font-size: 16px;
-        }
-        #round-timer {
-            color: #fff;
-            font-size: 20px;
-            min-width: 60px;
-            text-align: center;
-        }
+        #score-t { color: #FFD24A; font-size: 28px; }
+        #score-ct { color: #5CA8FF; font-size: 28px; }
+        #round-timer { color: #fff; font-size: 20px; min-width: 60px; text-align: center; }
 
-        /* Bottom-left — HP */
+        #round-info {
+            position: fixed; top: 70px; left: 50%;
+            transform: translateX(-50%);
+            z-index: 10; font-size: 14px; opacity: 0.85;
+            text-shadow: 1px 1px 2px #000;
+        }
         #hp-hud {
-            position: fixed;
-            bottom: 20px;
-            left: 190px;
-            font-size: 22px;
-            font-weight: bold;
+            position: fixed; bottom: 20px; left: 190px;
+            font-size: 22px; font-weight: bold;
             text-shadow: 2px 2px 3px #000;
             z-index: 10;
         }
-
-        /* Ability buttons */
         #abilities {
             position: fixed;
             bottom: 30px; right: 30px;
@@ -112,18 +122,13 @@
             border-color: #FF5555;
             box-shadow: 0 0 20px rgba(255,80,80,0.7);
         }
-        .ability.inactive {
-            opacity: 0.35;
-        }
+        .ability.inactive { opacity: 0.35; }
 
-        /* Round banner */
         #banner {
             position: fixed;
-            top: 50%;
-            left: 50%;
+            top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            font-size: 56px;
-            font-weight: bold;
+            font-size: 56px; font-weight: bold;
             text-shadow: 3px 3px 6px #000;
             z-index: 20;
             display: none;
@@ -131,38 +136,50 @@
             pointer-events: none;
         }
 
-        /* Rotate hint */
         #rotate-hint {
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
-            background: #111;
-            color: #fff;
+            background: #111; color: #fff;
             display: none;
-            justify-content: center;
-            align-items: center;
+            justify-content: center; align-items: center;
             flex-direction: column;
-            font-size: 22px;
-            z-index: 100;
-            text-align: center;
-            padding: 20px;
+            font-size: 22px; z-index: 100;
+            text-align: center; padding: 20px;
         }
         @media (orientation: portrait) {
             #rotate-hint { display: flex; }
         }
+
+        /* Кнопка развернуть — если Telegram не развернул */
+        #expand-btn {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(220, 40, 40, 0.85);
+            color: #fff;
+            border: 2px solid #fff;
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: bold;
+            z-index: 50;
+            cursor: pointer;
+            display: none;
+        }
+        #expand-btn.show { display: block; }
     </style>
 </head>
 <body>
     <div id="rotate-hint">📱 Поверни телефон горизонтально</div>
+
+    <button id="expand-btn">⛶ Развернуть</button>
 
     <div id="top-hud">
         <span id="score-t">T 0</span>
         <span id="round-timer">60</span>
         <span id="score-ct">CT 0</span>
     </div>
-    <div id="round-info" style="position:fixed; top:70px; left:50%; transform:translateX(-50%); z-index:10; font-size:14px; opacity:0.85; text-shadow:1px 1px 2px #000;">
-        Раунд 1 / 5
-    </div>
-
+    <div id="round-info">Раунд 1 / 5</div>
     <div id="hp-hud">HP: 100</div>
 
     <div id="joystick">
