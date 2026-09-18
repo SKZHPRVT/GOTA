@@ -7,7 +7,7 @@ import { CombatSystem } from './game/combat.js';
 import { CollisionSystem } from './game/collision.js';
 import { RoundManager } from './game/round.js';
 
-// === Telegram WebApp: ещё раз force-expand (страховка) ===
+// === Telegram WebApp ===
 const tg = window.Telegram?.WebApp;
 if (tg) {
     try {
@@ -15,52 +15,46 @@ if (tg) {
         tg.expand();
         if (tg.requestFullscreen) tg.requestFullscreen();
         if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
-        if (tg.lockOrientation) tg.lockOrientation('landscape');
-    } catch (e) {}
+        if (tg.setHeaderColor) tg.setHeaderColor('#000000');
+        if (tg.setBackgroundColor) tg.setBackgroundColor('#C2B280');
+    } catch (e) { console.error('[tg-main]', e); }
+}
 
-    // При изменении viewport — обновляем высоту
-    if (tg.onEvent) {
-        tg.onEvent('viewportChanged', () => {
-            const h = tg.viewportStableHeight || window.innerHeight;
-            document.documentElement.style.height = h + 'px';
-            document.body.style.height = h + 'px';
-        });
+// === Debug-панель ===
+const debugEl = document.createElement('div');
+debugEl.style.cssText = `
+    position: fixed;
+    top: calc(80px + var(--content-top, 0px));
+    right: calc(10px + var(--content-right, 0px));
+    background: rgba(0,0,0,0.75);
+    color: #0f0;
+    font-size: 11px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    z-index: 60;
+    font-family: monospace;
+    pointer-events: none;
+    white-space: pre;
+    line-height: 1.4;
+`;
+document.body.appendChild(debugEl);
+
+function updateDebug() {
+    if (!tg) {
+        debugEl.textContent = `no Telegram\ninnerH: ${window.innerHeight}`;
+        return;
     }
+    debugEl.textContent =
+        `tg v${tg.version} | ${tg.platform}\n` +
+        `expanded: ${tg.isExpanded}\n` +
+        `fullscr: ${tg.isFullscreen}\n` +
+        `vh: ${Math.round(tg.viewportHeight)}/${Math.round(tg.viewportStableHeight)}\n` +
+        `inner: ${window.innerHeight}\n` +
+        `screen: ${window.screen.width}x${window.screen.height}\n` +
+        `orient: ${screen.orientation?.type || '?'}`;
 }
-
-// === Кнопка "Развернуть" — если Telegram не развернул ===
-const expandBtn = document.getElementById('expand-btn');
-if (expandBtn) {
-    const checkExpanded = () => {
-        if (!tg) return;
-        const isExpanded = tg.isExpanded;
-        const h = tg.viewportHeight || window.innerHeight;
-        const stableH = tg.viewportStableHeight || window.innerHeight;
-        // Если окно меньше 80% от экрана — кнопка нужна
-        if (!isExpanded || h < stableH * 0.9) {
-            expandBtn.classList.add('show');
-        } else {
-            expandBtn.classList.remove('show');
-        }
-    };
-
-    expandBtn.addEventListener('click', () => {
-        if (tg) {
-            tg.expand();
-            if (tg.requestFullscreen) tg.requestFullscreen();
-            try { tg.lockOrientation?.('landscape'); } catch (e) {}
-        }
-        setTimeout(checkExpanded, 200);
-    });
-
-    // Проверка каждые 1.5 сек в первые 5 сек
-    let checks = 0;
-    const checkInterval = setInterval(() => {
-        checkExpanded();
-        checks++;
-        if (checks > 3) clearInterval(checkInterval);
-    }, 1500);
-}
+updateDebug();
+setInterval(updateDebug, 1000);
 
 // === Сцена ===
 const scene = new THREE.Scene();
@@ -91,7 +85,6 @@ sun.shadow.camera.near = 1;
 sun.shadow.camera.far = 500;
 scene.add(sun);
 
-// === UI ===
 const joystick = new Joystick(
     document.getElementById('joystick'),
     document.getElementById('joystick-knob')
@@ -105,7 +98,6 @@ const bannerEl = document.getElementById('banner');
 const abilityBombEl = document.getElementById('ability-1');
 const abilityHammerEl = document.getElementById('ability-2');
 
-// === Состояние ===
 let player;
 let tBots = [];
 let ctBots = [];
@@ -118,18 +110,15 @@ let spawnCT = { x: -25.5, z: -57 };
 let plants = [];
 let FLOORS = [];
 
-// === RoundManager ===
 const round = new RoundManager({
     roundsToWin: 5,
     roundDuration: 60,
     betweenRounds: 3,
     onRoundStart: (n) => {
-        console.log('[main] round start', n);
         showBanner(`Раунд ${n}`, '#FFD24A', 1.5);
         resetRound();
     },
     onRoundEnd: (winner, reason, sT, sCT) => {
-        console.log('[main] round end', winner, reason);
         const color = winner === 'T' ? '#FFD24A' : '#5CA8FF';
         const text = winner === 'T' ? 'Победа T!' : 'Победа CT!';
         showBanner(text, color, 2);
@@ -156,7 +145,6 @@ function updateScore(sT, sCT) {
     scoreCTEl.textContent = `CT ${sCT}`;
 }
 
-// === Init ===
 async function init() {
     const { arena, colliders, data } = await createArena();
     scene.add(arena);
@@ -167,9 +155,6 @@ async function init() {
     spawnT = data.spawns?.T || spawnT;
     spawnCT = data.spawns?.CT || spawnCT;
     plants = data.plants || [];
-
-    console.log('[main] spawn T:', spawnT, 'CT:', spawnCT);
-    console.log('[main] plants:', plants);
 
     player = new Player(scene, 'T', spawnT);
     window.player = player;
@@ -182,9 +167,7 @@ async function init() {
     abilityHammerEl.addEventListener('click', () => tryHammer());
 
     camera.position.set(spawnT.x, 45, spawnT.z + 35);
-
     setTimeout(() => round.start(), 500);
-
     animate();
 }
 
@@ -199,10 +182,7 @@ function createTeams() {
             { x: -4, z: 3 }, { x: 4, z: 3 },
             { x: -6, z: -3 }, { x: 6, z: -3 }
         ][i];
-        tBots.push(new Enemy(scene, 'T', {
-            x: spawnT.x + off.x,
-            z: spawnT.z + off.z
-        }));
+        tBots.push(new Enemy(scene, 'T', { x: spawnT.x + off.x, z: spawnT.z + off.z }));
     }
 
     for (let i = 0; i < 5; i++) {
@@ -228,30 +208,23 @@ function resetRound() {
 }
 
 function tryPlaceBomb() {
-    if (!player.alive) return;
-    if (!round.isPlaying()) return;
-
+    if (!player.alive || !round.isPlaying()) return;
     const px = player.mesh.position.x;
     const pz = player.mesh.position.z;
-
     let nearPlant = null;
     for (const p of plants) {
         const d = Math.hypot(px - p.x, pz - p.z);
         if (d < 10) { nearPlant = p; break; }
     }
-
     if (!nearPlant) {
         showBanner('Не на плэнте!', '#FF6666', 1);
         return;
     }
-
-    console.log('[bomb] placed at', nearPlant.id);
     showBanner(`💣 Бомба на ${nearPlant.id}!`, '#FFD24A', 2);
 }
 
 function tryHammer() {
     if (!player.alive) return;
-    console.log('[hammer] hit');
     showBanner('🔨 Удар!', '#FFFFFF', 0.5);
 }
 
@@ -271,34 +244,27 @@ let debugTimer = 0;
 function animate() {
     requestAnimationFrame(animate);
     const dt = Math.min(clock.getDelta(), 0.05);
-
     if (!player) return;
 
     const collisionRef = USE_COLLISION ? collision : null;
     const playing = round.isPlaying();
 
-    if (playing) {
-        player.update(dt, joystick.direction, collisionRef);
-    }
+    if (playing) player.update(dt, joystick.direction, collisionRef);
 
     debugTimer += dt;
-    if (debugTimer > 1) {
+    if (debugTimer > 2) {
         debugTimer = 0;
-        console.log(
-            '[debug] pos:', player.mesh.position.x.toFixed(1), player.mesh.position.z.toFixed(1),
-            '| alive T:', tBots.filter(b => b.alive).length,
-            '| alive CT:', ctBots.filter(b => b.alive).length,
-            '| round:', round.roundNumber, '| state:', round.state
-        );
+        console.log('[debug] pos:', player.mesh.position.x.toFixed(1), player.mesh.position.z.toFixed(1),
+            '| T:', tBots.filter(b => b.alive).length,
+            '| CT:', ctBots.filter(b => b.alive).length,
+            '| round:', round.roundNumber, '| state:', round.state);
     }
 
     const allBots = [...tBots, ...ctBots];
 
     if (player.alive && playing) {
         const enemiesForPlayer = ctBots.filter(b => b.alive);
-        const target = combat.findNearestTarget(
-            player.mesh.position, enemiesForPlayer, player.attackRange
-        );
+        const target = combat.findNearestTarget(player.mesh.position, enemiesForPlayer, player.attackRange);
         if (target && collision) {
             const fromPos = player.mesh.position;
             const toPos = target.mesh.position;
@@ -314,42 +280,20 @@ function animate() {
     }
 
     if (playing) {
+        const hasLOS = collision ? (a, b) => collision.hasLineOfSight(a, b) : () => true;
         for (const bot of tBots) {
             if (!bot.alive) continue;
-            const hasLOS = collision
-                ? (a, b) => collision.hasLineOfSight(a, b)
-                : () => true;
-            const action = bot.update(
-                dt, allBots, player.mesh.position, player.alive, collisionRef, hasLOS
-            );
-            if (action && action.type === 'shoot') {
-                const fakeTarget = {
-                    mesh: {
-                        position: action.from.clone().add(
-                            action.direction.clone().multiplyScalar(10)
-                        )
-                    }
-                };
+            const action = bot.update(dt, allBots, player.mesh.position, player.alive, collisionRef, hasLOS);
+            if (action?.type === 'shoot') {
+                const fakeTarget = { mesh: { position: action.from.clone().add(action.direction.clone().multiplyScalar(10)) } };
                 combat.shoot(action.from.clone().sub(new THREE.Vector3(0, 1.2, 0)), fakeTarget, 'T');
             }
         }
-
         for (const bot of ctBots) {
             if (!bot.alive) continue;
-            const hasLOS = collision
-                ? (a, b) => collision.hasLineOfSight(a, b)
-                : () => true;
-            const action = bot.update(
-                dt, allBots, player.mesh.position, player.alive, collisionRef, hasLOS
-            );
-            if (action && action.type === 'shoot') {
-                const fakeTarget = {
-                    mesh: {
-                        position: action.from.clone().add(
-                            action.direction.clone().multiplyScalar(10)
-                        )
-                    }
-                };
+            const action = bot.update(dt, allBots, player.mesh.position, player.alive, collisionRef, hasLOS);
+            if (action?.type === 'shoot') {
+                const fakeTarget = { mesh: { position: action.from.clone().add(action.direction.clone().multiplyScalar(10)) } };
                 combat.shoot(action.from.clone().sub(new THREE.Vector3(0, 1.2, 0)), fakeTarget, 'CT');
             }
         }
@@ -373,13 +317,8 @@ function animate() {
             const d = Math.hypot(px - p.x, pz - p.z);
             if (d < 10) { nearPlant = true; break; }
         }
-        if (nearPlant) {
-            abilityBombEl.classList.add('active');
-            abilityBombEl.classList.remove('inactive');
-        } else {
-            abilityBombEl.classList.remove('active');
-            abilityBombEl.classList.add('inactive');
-        }
+        abilityBombEl.classList.toggle('active', nearPlant);
+        abilityBombEl.classList.toggle('inactive', !nearPlant);
     } else {
         abilityBombEl.classList.remove('active');
         abilityBombEl.classList.add('inactive');
@@ -392,7 +331,6 @@ function animate() {
 window.addEventListener('keydown', (e) => {
     if (e.key === 'c' || e.key === 'C' || e.key === 'с' || e.key === 'С') {
         USE_COLLISION = !USE_COLLISION;
-        console.log('[debug] collision:', USE_COLLISION);
     }
 });
 
