@@ -13,15 +13,7 @@
     <script>
         (function() {
             var tg = window.Telegram && window.Telegram.WebApp;
-            if (!tg) {
-                console.warn('[tg-head] Telegram.WebApp не найден');
-                return;
-            }
-
-            window.__tgLockLandscape = function() {
-                if (!tg.lockOrientation) return;
-                try { tg.lockOrientation('landscape'); } catch (e) {}
-            };
+            if (!tg) return;
 
             try {
                 tg.ready();
@@ -30,23 +22,25 @@
                 if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
                 if (tg.setHeaderColor) tg.setHeaderColor('#000000');
                 if (tg.setBackgroundColor) tg.setBackgroundColor('#C2B280');
+                if (tg.lockOrientation) {
+                    try { tg.lockOrientation('landscape'); } catch (e) {}
+                }
             } catch (e) { console.error('[tg-head]', e); }
 
+            // Повторяем попытку lock после fullscreen и по тапу
             if (tg.onEvent) {
                 tg.onEvent('fullscreenChanged', function() {
-                    if (tg.isFullscreen) window.__tgLockLandscape();
+                    if (tg.isFullscreen && tg.lockOrientation) {
+                        try { tg.lockOrientation('landscape'); } catch (e) {}
+                    }
                 });
             }
-
-            setTimeout(function() {
-                if (tg.isFullscreen) window.__tgLockLandscape();
-            }, 500);
-
-            document.addEventListener('touchstart', function firstTap() {
-                window.__tgLockLandscape();
-                document.removeEventListener('touchstart', firstTap);
+            document.addEventListener('touchstart', function once() {
+                if (tg.lockOrientation) {
+                    try { tg.lockOrientation('landscape'); } catch (e) {}
+                }
+                document.removeEventListener('touchstart', once);
             }, { once: true });
-
         })();
     </script>
 
@@ -74,11 +68,36 @@
             font-family: 'Courier New', monospace;
             touch-action: none;
             color: #fff;
-            position: fixed;
-            inset: 0;
         }
-        canvas { display: block; width: 100%; height: 100%; }
 
+        /* === КОНТЕЙНЕР ДЛЯ CSS-ПОВОРОТА === */
+        /* Если ориентация портретная — контейнер поворачивается на 90° */
+        #game-root {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        @media (orientation: portrait) {
+            #game-root {
+                /* Поворачиваем: ширина становится высотой */
+                width: 100vh;
+                height: 100vw;
+                transform: rotate(90deg);
+                transform-origin: top left;
+                /* Сдвигаем на нужное место */
+                top: 0;
+                left: 100vw;
+                margin-left: -100vw;
+            }
+        }
+
+        canvas { display: block; width: 100% !important; height: 100% !important; }
+
+        /* HUD */
         #top-hud {
             position: fixed;
             top: calc(10px + var(--content-top));
@@ -183,49 +202,29 @@
             text-align: center;
             pointer-events: none;
         }
-        #rotate-hint {
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.85);
-            color: #fff;
-            display: none;
-            justify-content: center; align-items: center;
-            flex-direction: column;
-            font-size: 22px; z-index: 100;
-            text-align: center; padding: 20px;
-            pointer-events: none;
-        }
-        #rotate-hint .icon { font-size: 64px; margin-bottom: 20px; animation: rotate 2s ease-in-out infinite; }
-        @keyframes rotate {
-            0%, 100% { transform: rotate(0deg); }
-            50% { transform: rotate(90deg); }
-        }
     </style>
 </head>
 <body>
-    <div id="rotate-hint">
-        <div class="icon">📱</div>
-        <div>Поверни телефон горизонтально</div>
-    </div>
+    <div id="game-root">
+        <div id="top-hud">
+            <span id="score-t">T 0</span>
+            <span id="round-timer">60</span>
+            <span id="score-ct">CT 0</span>
+        </div>
+        <div id="round-info">Раунд 1 / 5</div>
+        <div id="hp-hud">HP: 100</div>
 
-    <div id="top-hud">
-        <span id="score-t">T 0</span>
-        <span id="round-timer">60</span>
-        <span id="score-ct">CT 0</span>
-    </div>
-    <div id="round-info">Раунд 1 / 5</div>
-    <div id="hp-hud">HP: 100</div>
+        <div id="joystick">
+            <div id="joystick-knob"></div>
+        </div>
 
-    <div id="joystick">
-        <div id="joystick-knob"></div>
-    </div>
+        <div id="abilities">
+            <div class="ability" id="ability-1">💣</div>
+            <div class="ability" id="ability-2">🔨</div>
+        </div>
 
-    <div id="abilities">
-        <div class="ability" id="ability-1">💣</div>
-        <div class="ability" id="ability-2">🔨</div>
+        <div id="banner"></div>
     </div>
-
-    <div id="banner"></div>
 
     <script type="module" src="/src/main.js"></script>
 </body>
