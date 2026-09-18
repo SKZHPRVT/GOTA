@@ -8,6 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tma.js/sdk": "^3.3.0",
     "sharp": "^0.33.5",
     "three": "^0.160.0"
   },
